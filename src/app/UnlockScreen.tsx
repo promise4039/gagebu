@@ -74,6 +74,12 @@ export function UnlockScreen() {
           onChange={async e => {
             const f = e.target.files?.[0];
             if (!f) return;
+            const ok = window.confirm('기존 로컬 데이터가 모두 덮어씌워집니다. 계속하시겠습니까?');
+            if (!ok) {
+              // reset input so selecting same file again triggers change
+              (e.target as HTMLInputElement).value = '';
+              return;
+            }
             setBusy(true);
             try { await app.importBackup(f); }
             finally { setBusy(false); }

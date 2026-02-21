@@ -61,6 +61,7 @@ export function TransactionsPage() {
       ...t,
       cardId: d.cardId,
       category: d.category,
+      categoryId: app.categoryIdByPath[d.category] ?? undefined,
       amount: a,
       installments: inst,
       feeMode: d.feeMode,

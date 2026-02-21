@@ -110,6 +110,7 @@ function makeDefaultRow(): DraftRow {
       feeMode: 'free',
       feeRate: '',
       memo: '',
+      tags: '',
     };
   }
 
@@ -138,11 +139,13 @@ function makeDefaultRow(): DraftRow {
         date: selected,
         cardId: r.cardId,
         category: r.category,
+        categoryId: app.categoryIdByPath[r.category] ?? undefined,
         amount: a,
         installments: inst,
         feeMode: r.feeMode,
         feeRate: r.feeMode === 'manual' ? rate : 0,
         memo: r.memo.trim(),
+        tags: String(r.tags ?? '').split(',').map(x => x.replace('#','').trim()).filter(Boolean),
       });
     }
     if (toSave.length === 0) { alert('저장할 거래가 없어. 금액을 입력해줘.'); return; }
@@ -164,6 +167,7 @@ function makeDefaultRow(): DraftRow {
       feeMode: t.feeMode as FeeMode,
       feeRate: String(t.feeRate),
       memo: t.memo,
+      tags: (t.tags ?? []).join(', '),
     });
   }
 
@@ -178,11 +182,13 @@ function makeDefaultRow(): DraftRow {
       ...t,
       cardId: editDraft.cardId,
       category: editDraft.category,
+      categoryId: app.categoryIdByPath[editDraft.category] ?? undefined,
       amount: a,
       installments: inst,
       feeMode: editDraft.feeMode,
       feeRate: editDraft.feeMode === 'manual' ? rate : 0,
       memo: editDraft.memo.trim(),
+      tags: String(editDraft.tags ?? '').split(',').map(x => x.replace('#','').trim()).filter(Boolean),
     };
     await app.upsertTx(next);
     setEditingId(null);
@@ -315,7 +321,8 @@ function makeDefaultRow(): DraftRow {
                       <th style={{width: 90}}>할부</th>
                       <th style={{width: 120}}>수수료</th>
                       <th style={{width: 110}}>수수료율</th>
-                      <th style={{width: 260}}>메모</th>
+                      <th style={{width: 240}}>메모</th>
+                      <th style={{width: 200}}>태그</th>
                       <th style={{width: 80}}></th>
                     </tr>
                   </thead>
@@ -352,6 +359,13 @@ function makeDefaultRow(): DraftRow {
                         <td>
                           <input value={r.memo} onChange={e => updateRow(r.id, { memo: e.target.value })} placeholder="메모" />
                         </td>
+                      <td>
+                        <input
+                          value={r.tags}
+                          onChange={e => updateRow(r.id, { tags: e.target.value })}
+                          placeholder="#점심, #스터디카페"
+                        />
+                      </td>
                         <td className="right">
                           <button className="btn danger" onClick={() => removeRow(r.id)} disabled={drafts.length <= 1}>삭제</button>
                         </td>
@@ -392,7 +406,8 @@ function makeDefaultRow(): DraftRow {
                       <th style={{width: 90}}>할부</th>
                       <th style={{width: 120}}>수수료</th>
                       <th style={{width: 110}}>수수료율</th>
-                      <th>메모</th>
+                      <th style={{width: 240}}>메모</th>
+                      <th style={{width: 200}}>태그</th>
                       <th style={{width: 220}}></th>
                     </tr>
                   </thead>
@@ -456,6 +471,11 @@ function makeDefaultRow(): DraftRow {
                             {isEditing ? (
                               <input value={d?.memo ?? t.memo} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), memo: e.target.value }))} />
                             ) : t.memo}
+                          </td>
+                          <td className="muted">
+                            {isEditing ? (
+                              <input value={d?.tags ?? ((t.tags ?? []).join(', '))} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), tags: e.target.value }))} />
+                            ) : (t.tags && t.tags.length ? t.tags.map(x => '#' + x).join(', ') : '')}
                           </td>
                           <td className="right">
                             {isEditing ? (

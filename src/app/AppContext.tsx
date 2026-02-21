@@ -18,6 +18,8 @@ type AppCtx = {
   statements: Statement[];
   loans: Loan[];
   categories: string[];
+  categoryIdByPath: Record<string, string>;
+  pathByCategoryId: Record<string, string>;
 
   upsertCard: (c: Card) => Promise<void>;
   deleteCard: (id: string) => Promise<void>;
@@ -66,6 +68,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [statements, setStatements] = useState<Statement[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [categoryIdByPath, setCategoryIdByPath] = useState<Record<string, string>>({});
+  const [pathByCategoryId, setPathByCategoryId] = useState<Record<string, string>>({});
 
   const keyRef = useRef<CryptoKey | null>(null);
 
@@ -75,10 +79,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('mousemove', bump);
     window.addEventListener('keydown', bump);
     window.addEventListener('click', bump);
+    window.addEventListener('touchstart', bump, { passive: true });
+    window.addEventListener('scroll', bump, { passive: true });
     return () => {
       window.removeEventListener('mousemove', bump);
       window.removeEventListener('keydown', bump);
       window.removeEventListener('click', bump);
+      window.removeEventListener('touchstart', bump as any);
+      window.removeEventListener('scroll', bump as any);
     };
   }, []);
 
@@ -109,6 +117,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStatements(s.statements);
     setLoans((s as any).loans ?? []);
     setCategories(s.categories);
+    setCategoryIdByPath((s as any).categoryIdByPath ?? {});
+    setPathByCategoryId((s as any).pathByCategoryId ?? {});
     setUnlocked(true);
     setError(null);
   }, []);
@@ -146,6 +156,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStatements([]);
     setLoans([]);
     setCategories([]);
+    setCategoryIdByPath({});
+    setPathByCategoryId({});
   }, []);
 
 function applyBalanceDelta(cardId: string, delta: number) {
@@ -277,26 +289,45 @@ if (old) {
     setLoans(prev => prev.filter(x => x.id !== id));
   }, []);
 
-  const upsertCategory = useCallback(async (name: string) => {
-    const k = requireKey();
-    const n = name.trim();
-    if (!n) return;
-    await store.saveCategory(k, n);
-    setCategories(prev => {
-      const set = new Set(prev);
-      set.add(n);
-      return Array.from(set.values()).sort();
-    });
-  }, []);
 
-  const deleteCategory = useCallback(async (name: string) => {
-    const k = requireKey();
-    const n = name.trim();
-    if (!n) return;
-    await store.deleteCategoryByName(k, n);
-    setCategories(prev => prev.filter(x => x !== n));
-  }, []);
+const upsertCategory = useCallback(async (name: string) => {
+  const k = requireKey();
+  const path = name.trim();
+  if (!path) return;
+  if (categoryIdByPath[path]) return;
 
+  const created = await store.saveCategory(k, path);
+
+  setCategories(prev => {
+    const set = new Set(prev);
+    set.add(created.fullPath);
+    return Array.from(set.values()).sort();
+  });
+  setCategoryIdByPath(prev => ({ ...prev, [created.fullPath]: created.id }));
+  setPathByCategoryId(prev => ({ ...prev, [created.id]: created.fullPath }));
+}, [categoryIdByPath]);
+
+const deleteCategory = useCallback(async (name: string) => {
+  const k = requireKey();
+  const path = name.trim();
+  if (!path) return;
+  const id = categoryIdByPath[path];
+  if (!id) return;
+
+  await store.deleteCategoryById(k, id);
+
+  setCategories(prev => prev.filter(x => x !== path));
+  setCategoryIdByPath(prev => {
+    const next = { ...prev };
+    delete next[path];
+    return next;
+  });
+  setPathByCategoryId(prev => {
+    const next = { ...prev };
+    delete next[id];
+    return next;
+  });
+}, [categoryIdByPath]);
   const updateSettings = useCallback(async (s: AppSettings) => {
     const k = requireKey();
     await store.saveSettings(k, s);
@@ -331,6 +362,8 @@ if (old) {
     statements,
     loans,
     categories,
+    categoryIdByPath,
+    pathByCategoryId,
     upsertCard,
     deleteCard,
     upsertCardVersion,
@@ -347,7 +380,7 @@ if (old) {
     exportBackup,
     importBackup,
   }), [isUnlocked, isInitialized, error, initWallet, unlockWallet, lock, settings, cards, cardVersions, tx, statements, loans, categories,
-      upsertCard, deleteCard, upsertCardVersion, deleteCardVersion, upsertTx, deleteTx, upsertStatement, deleteStatement, upsertLoan, deleteLoan, upsertCategory, deleteCategory, updateSettings, exportBackup, importBackup]);
+      upsertCard, deleteCard, upsertCardVersion, deleteCardVersion, upsertTx, deleteTx, upsertStatement, deleteStatement, upsertLoan, deleteLoan, upsertCategory, deleteCategory, updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

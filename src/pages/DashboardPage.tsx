@@ -4,6 +4,7 @@ import { BudgetItem, Tx } from '../domain/models';
 import { addMonthsUTC, makeUTCDate, parseYMD, ymd } from '../domain/date';
 import { BulkEntryModal } from '../components/BulkEntryModal';
 import { TransactionsManagerModal } from '../components/TransactionsManagerModal';
+import { APP_VERSION } from '../app/version';
 
 const fmt = new Intl.NumberFormat('ko-KR');
 
@@ -57,14 +58,18 @@ export function DashboardPage() {
   const categoryBudgetMap = settings.categoryBudgetMap ?? {};
 
   async function linkCategoryToBudget(category: string, itemId: string) {
-    const next = { ...categoryBudgetMap, [category]: itemId };
-    await app.updateSettings({ ...settings, categoryBudgetMap: next });
+    const cid = app.categoryIdByPath[category];
+    if (!cid) { alert('카테고리 ID를 찾지 못했어. (카테고리 다시 추가/동기화 필요)'); return; }
+    const next = { ...categoryBudgetMap, [cid]: itemId };
+    await app.updateSettings({ ...settings, categoryBudgetMap: next } as any);
   }
 
   async function unlinkCategory(category: string) {
+    const cid = app.categoryIdByPath[category];
+    if (!cid) return;
     const next = { ...categoryBudgetMap };
-    delete next[category];
-    await app.updateSettings({ ...settings, categoryBudgetMap: next });
+    delete next[cid];
+    await app.updateSettings({ ...settings, categoryBudgetMap: next } as any);
   }
 
   function draftTargetForCategory(category: string): string {
@@ -140,11 +145,10 @@ export function DashboardPage() {
   const yearUnmapped = new Map<string, number>();
 
   function resolveItemId(category: string): string | null {
-    const mapped = (categoryBudgetMap as any)[category];
-    if (mapped && validItemIds.has(mapped)) return mapped;
-    const k = kindForCategory(category);
-    if (k && primaryByKind.has(k)) return primaryByKind.get(k)!;
-    return null;
+    const cid = app.categoryIdByPath[category];
+    if (!cid) return null;
+    const mapped = (categoryBudgetMap as any)[cid];
+    return typeof mapped === 'string' ? mapped : null;
   }
 
   for (const t of monthTx) {
@@ -193,7 +197,7 @@ export function DashboardPage() {
     if (!d) return;
     const a = Number(String(d.amount).replaceAll(',', '').trim());
     if (!Number.isFinite(a) || a === 0) { alert('금액을 숫자로 넣어줘.'); return; }
-    await app.upsertTx({ ...t, cardId: d.cardId, category: d.category, amount: a, memo: String(d.memo ?? '').trim() });
+    await app.upsertTx({ ...t, cardId: d.cardId, category: d.category, categoryId: app.categoryIdByPath[d.category] ?? undefined, amount: a, memo: String(d.memo ?? '').trim(), tags: t.tags ?? [] });
     cancelEdit(t.id);
   }
   async function deleteChecked() {
@@ -212,7 +216,7 @@ export function DashboardPage() {
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <div>
             <div className="muted small">PERSONAL BUDGET</div>
-            <h2 style={{ margin: 0 }}>명준님의 가계부</h2>
+            <h2 style={{ margin: 0 }}>명준님의 가계부 <span className="muted small" style={{ marginLeft: 8 }}>{APP_VERSION}</span></h2>
           </div>
           <div className="right">
             <div className="mono">{new Date().toISOString().slice(0, 10)}</div>
@@ -311,7 +315,7 @@ export function DashboardPage() {
         <div className="two-col">
           <div className="card" style={{ boxShadow: 'none' }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }}>예산대비 실적(월)</h2>
+              <h2 style={{ margin: 0 }}>예산대비 현황(월)</h2>
               <div className="mono">{fmt.format(monthKpi.expense)}원 / {fmt.format(monthBudgetTotal)}원</div>
             </div>
 
@@ -489,7 +493,7 @@ export function DashboardPage() {
 
           <div className="card" style={{ boxShadow: 'none' }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }}>예산대비 실적({yearCursor}년)</h2>
+              <h2 style={{ margin: 0 }}>예산대비 현황({yearCursor}년)</h2>
               <div className="mono">{fmt.format(yearKpi.expense)}원 / {fmt.format(yearBudgetTotal)}원</div>
             </div>
 

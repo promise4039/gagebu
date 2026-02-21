@@ -276,3 +276,61 @@ tr:last-child td{border-bottom:none}
   align-items:center;
   flex-wrap: wrap;
 }
+
+
+/* AppShell mobile layout */
+.app-body{
+  padding-bottom: 84px; /* space for bottom tab bar */
+}
+
+.bottom-nav{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  backdrop-filter: blur(10px);
+  background: rgba(10, 14, 30, 0.88);
+  border-top: 1px solid var(--line);
+}
+
+.bottom-nav .nav-inner{
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.bottom-nav .tab{
+  flex: 1;
+  text-align: center;
+  border-radius: 14px;
+  padding: 10px 8px;
+  font-size: 12px;
+}
+
+@media (min-width: 900px){
+  .bottom-nav .nav-inner{ justify-content: center; }
+  .bottom-nav .tab{ max-width: 220px; }
+}
+
+.notice-dismissible{
+  position: relative;
+  padding-right: 44px;
+}
+.notice-close{
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 26px;
+  font-size: 18px;
+}

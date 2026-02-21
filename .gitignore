@@ -1,9 +1,8 @@
 node_modules
 dist
-.vite
-.cache
 .DS_Store
 *.log
-
-.env
-.env.*
+backup*.json
+*.backup.json
+*.csv
+*.xlsx

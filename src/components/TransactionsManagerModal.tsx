@@ -77,6 +77,7 @@ export function TransactionsManagerModal({
         feeMode: t.feeMode as FeeMode,
         feeRate: String(t.feeRate),
         memo: t.memo,
+        tags: (t.tags ?? []).join(', '),
       },
     }));
   }
@@ -111,11 +112,13 @@ export function TransactionsManagerModal({
       date: d.date,
       cardId: d.cardId,
       category: d.category,
+      categoryId: app.categoryIdByPath[d.category] ?? undefined,
       amount: a,
       installments: inst,
       feeMode: d.feeMode,
       feeRate: d.feeMode === 'manual' ? rate : 0,
       memo: String(d.memo ?? '').trim(),
+      tags: String(d.tags ?? '').split(',').map(x => x.replace('#','').trim()).filter(Boolean),
     });
     cancelEdit(t.id);
   }
@@ -193,7 +196,8 @@ export function TransactionsManagerModal({
                       <th style={{ width: 120 }}>날짜</th>
                       <th style={{ width: 180 }}>결제수단</th>
                       <th style={{ width: 200 }}>카테고리</th>
-                      <th>메모</th>
+                      <th style={{ width: 240 }}>메모</th>
+                      <th style={{ width: 200 }}>태그</th>
                       <th className="right" style={{ width: 140 }}>금액</th>
                       <th style={{ width: 220 }}></th>
                     </tr>

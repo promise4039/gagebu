@@ -15,7 +15,9 @@ export type UnlockedState = {
   tx: Tx[];
   statements: Statement[];
   loans: Loan[];
-  categories: string[];
+  categories: string[]; // leaf fullPath list
+  categoryIdByPath: Record<string, string>;
+  pathByCategoryId: Record<string, string>;
 };
 
 const DEFAULT_BUDGET_BUCKETS: Record<string, number> = {
@@ -129,19 +131,123 @@ export async function unlock(passphrase: string): Promise<UnlockedState> {
     purpose: (c.purpose ?? ''),
   })) as Card[];
   const cardVersions = await decryptAll<CardVersion>(key, 'card_versions');
-  const tx = await decryptAll<Tx>(key, 'tx');
+  const rawTx = await decryptAll<any>(key, 'tx');
+  // migrate older tx records (tags/categoryId)
+  const tx = rawTx.map((t: any) => ({
+    ...t,
+    tags: Array.isArray(t.tags) ? t.tags : [],
+    categoryId: (t.categoryId ?? (t.category ? ('cat_' + t.category) : undefined)),
+  })) as Tx[];
   const statements = await decryptAll<Statement>(key, 'statements');
   const loans = await decryptAll<any>(key, 'loans');
 
-  const cats = await decryptAll<{ id: string; name: string }>(key, 'categories');
-  const catSet = new Set(cats.map(c => c.name));
-  for (const c of DEFAULT_CATEGORIES) {
-    if (!catSet.has(c)) {
-      await upsert(key, 'categories', { id: 'cat_' + c, name: c } as any);
-      catSet.add(c);
-    }
+const catsRaw = await decryptAll<any>(key, 'categories');
+
+// ===== Categories UUID migration (v10.7) =====
+// Goal:
+// - Store categories as entity records with stable UUID ids.
+// - Expose a leaf fullPath list for UI, plus fullPath -> id map.
+// - Migrate tx.categoryId from legacy ('cat_'+path) to UUID.
+// - Migrate settings.categoryBudgetMap to UUID keys.
+
+function typeFromPath(path: string) {
+  if (path.startsWith('수입/')) return 'INCOME';
+  if (path.startsWith('이체/')) return 'TRANSFER';
+  return 'EXPENSE';
+}
+function iconForType(type: string) {
+  if (type === 'INCOME') return '💰';
+  if (type === 'TRANSFER') return '🔁';
+  return '🧾';
+}
+function leafName(path: string) {
+  const parts = path.split('/').filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : path;
+}
+
+// Collect candidate paths from defaults, transactions, and legacy records
+const pathSet = new Set<string>();
+for (const c of DEFAULT_CATEGORIES) pathSet.add(c);
+for (const t of tx) {
+  if (t?.category) pathSet.add(String(t.category));
+}
+for (const c of catsRaw) {
+  if (!c) continue;
+  if (typeof c.fullPath === 'string' && c.fullPath.trim()) pathSet.add(c.fullPath.trim());
+  else if (typeof c.name === 'string' && c.name.includes('/')) pathSet.add(c.name.trim());
+  else if (typeof c.id === 'string' && c.id.startsWith('cat_')) pathSet.add(c.id.slice(4));
+}
+
+// Build fullPath -> uuid id map from existing uuid records
+const categoryIdByPath: Record<string, string> = {};
+const uuidCats: any[] = [];
+const legacyIdsToDelete: string[] = [];
+
+for (const c of catsRaw) {
+  if (!c || typeof c.id !== 'string') continue;
+  // legacy ids
+  if (c.id.startsWith('cat_')) {
+    legacyIdsToDelete.push(c.id);
+    continue;
   }
-  const categories = Array.from(catSet.values()).sort();
+  // uuid-style records must have fullPath
+  if (typeof c.fullPath === 'string' && c.fullPath.trim()) {
+    const p = c.fullPath.trim();
+    categoryIdByPath[p] = c.id;
+    uuidCats.push(c);
+  }
+}
+
+// Ensure uuid record exists for every path
+for (const p of Array.from(pathSet.values())) {
+  const path = String(p).trim();
+  if (!path) continue;
+  if (categoryIdByPath[path]) continue;
+
+  const id = 'c_' + crypto.randomUUID();
+  const type = typeFromPath(path);
+  const rec = {
+    id,
+    type,
+    name: leafName(path),
+    fullPath: path,
+    parentId: null,
+    isDefault: DEFAULT_CATEGORIES.includes(path),
+    order: 0,
+    icon: iconForType(type),
+  };
+  await upsert(key, 'categories', rec as any);
+  categoryIdByPath[path] = id;
+  uuidCats.push(rec);
+}
+
+// Delete legacy category records to avoid clutter
+for (const id of legacyIdsToDelete) {
+  await deleteEncrypted('categories', id as any);
+}
+
+// UI categories list: leaf paths only (exclude pure parent nodes if they exist)
+// Here we treat categories as the collected full paths.
+const categories = Object.keys(categoryIdByPath).sort();
+
+// Reverse map for UI/labels
+const pathByCategoryId: Record<string, string> = {};
+for (const [p, id] of Object.entries(categoryIdByPath)) pathByCategoryId[id] = p;
+
+// Migrate tx.categoryId to UUID
+let txChanged = false;
+for (const t of tx) {
+  const path = String(t.category ?? '').trim();
+  if (!path) continue;
+  const desired = categoryIdByPath[path];
+  if (!desired) continue;
+  if (!t.categoryId || String(t.categoryId).startsWith('cat_') || t.categoryId !== desired) {
+    (t as any).categoryId = desired;
+    txChanged = true;
+    await upsert(key, 'tx', t as any);
+  }
+}
+
 
   const settingsArr = await decryptAll<any>(key, 'settings');
   const settings = (settingsArr.find((x: any) => x.id === 'settings') ?? DEFAULT_SETTINGS) as AppSettings;
@@ -169,12 +275,29 @@ if (!(settings as any).budgetItems || !Array.isArray((settings as any).budgetIte
 }
 
   
-// categoryBudgetMap migration
+// categoryBudgetMap migration (UUID keys)
 if (!(settings as any).categoryBudgetMap || typeof (settings as any).categoryBudgetMap !== 'object') {
   (settings as any).categoryBudgetMap = {};
+} else {
+  const srcMap = (settings as any).categoryBudgetMap as Record<string, string>;
+  const next: Record<string, string> = {};
+  for (const [k, v] of Object.entries(srcMap)) {
+    // legacy forms:
+    // - 'cat_'+fullPath
+    // - fullPath
+    // - uuid id (c_*)
+    if (k.startsWith('c_')) {
+      next[k] = v;
+      continue;
+    }
+    const fullPath = k.startsWith('cat_') ? k.slice(4) : k;
+    const id = categoryIdByPath[fullPath];
+    if (id) next[id] = v;
+  }
+  (settings as any).categoryBudgetMap = next;
 }
 
-  await upsert(key, 'settings', { id: 'settings', ...settings } as any);
+await upsert(key, 'settings', { id: 'settings', ...settings } as any);
 
   return {
     key,
@@ -187,6 +310,8 @@ if (!(settings as any).categoryBudgetMap || typeof (settings as any).categoryBud
     statements,
     loans,
     categories,
+    categoryIdByPath,
+    pathByCategoryId,
   };
 }
 
@@ -253,14 +378,29 @@ export async function saveLoan(key: CryptoKey, loan: Loan): Promise<void> { awai
 export async function deleteLoan(key: CryptoKey, id: string): Promise<void> { await deleteEncrypted('loans', id); }
 
 
-export async function saveCategory(key: CryptoKey, name: string): Promise<void> {
-  const n = name.trim();
-  if (!n) return;
-  await upsert(key, 'categories', { id: 'cat_' + n, name: n } as any);
+export async function saveCategory(key: CryptoKey, fullPath: string): Promise<{ id: string; fullPath: string }> {
+  const path = fullPath.trim();
+  if (!path) throw new Error('EMPTY_CATEGORY');
+  const type = path.startsWith('수입/') ? 'INCOME' : (path.startsWith('이체/') ? 'TRANSFER' : 'EXPENSE');
+  const icon = type === 'INCOME' ? '💰' : (type === 'TRANSFER' ? '🔁' : '🧾');
+
+  const id = 'c_' + crypto.randomUUID();
+  const rec = {
+    id,
+    type,
+    name: path.split('/').filter(Boolean).slice(-1)[0] ?? path,
+    fullPath: path,
+    parentId: null,
+    isDefault: false,
+    order: 0,
+    icon,
+  };
+  await upsert(key, 'categories', rec as any);
+  return { id, fullPath: path };
 }
 
-export async function deleteCategoryByName(key: CryptoKey, name: string): Promise<void> {
-  const n = name.trim();
-  if (!n) return;
-  await deleteEncrypted('categories', 'cat_' + n);
+export async function deleteCategoryById(key: CryptoKey, id: string): Promise<void> {
+  const cid = id.trim();
+  if (!cid) return;
+  await deleteEncrypted('categories', cid as any);
 }

@@ -1,6 +1,20 @@
 export type PayMethodType = 'credit' | 'debit' | 'cash' | 'account' | 'transfer_spend' | 'transfer_nonspend';
 export type WeekendAdjust = 'none' | 'next_business' | 'prev_business';
 
+export type CategoryType = 'INCOME' | 'EXPENSE' | 'TRANSFER';
+
+export type Category = {
+  id: string;              // stable id (uuid)
+  type: CategoryType;      // INCOME/EXPENSE/TRANSFER
+  name: string;            // segment label (leaf)
+  fullPath: string;        // full path (e.g. 식비/외식)
+  parentId: string | null; // optional for tree
+  isDefault: boolean;
+  order: number;
+  icon: string;            // emoji or short text
+  colorCode?: string;      // optional for charts
+};
+
 export type Card = {
   id: string;
   name: string;
@@ -36,12 +50,16 @@ export type Tx = {
   id: string;
   date: string; // YYYY-MM-DD
   cardId: string;
+  // (레거시) 문자열 카테고리
   category: string;
+  // (차세대) 카테고리 엔티티 id
+  categoryId?: string;
   amount: number; // KRW, negative allowed for refunds
   installments: number; // 1=single
   feeMode: TxFeeMode;
   feeRate: number; // percent when manual
   memo: string;
+  tags: string[]; // free-form tags (without #)
 };
 
 export type Statement = {
