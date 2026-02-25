@@ -15,6 +15,7 @@ type DraftRow = {
   feeMode: FeeMode;
   feeRate: string;
   memo: string;
+  tags: string;
 };
 
 function uid(prefix: string) {
@@ -44,7 +45,7 @@ export function BulkEntryModal({ open, onClose, initialDate }: { open: boolean; 
 
   // inline edit + multiselect for existing
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<{ cardId: string; category: string; amount: string; installments: number; feeMode: FeeMode; feeRate: string; memo: string } | null>(null);
+  const [editDraft, setEditDraft] = useState<{ cardId: string; category: string; amount: string; installments: number; feeMode: FeeMode; feeRate: string; memo: string; tags: string } | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
 
   React.useEffect(() => {

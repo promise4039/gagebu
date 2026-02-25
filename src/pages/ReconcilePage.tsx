@@ -206,6 +206,7 @@ export function ReconcilePage() {
         feeMode: 'free',
         feeRate: 0,
         memo: memo.trim(),
+        tags: (),
       };
       await app.upsertTx(tx);
       onClose();

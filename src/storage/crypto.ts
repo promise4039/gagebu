@@ -12,6 +12,13 @@ function fromB64(b64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/** Uint8Array -> "진짜 ArrayBuffer"로 복사 (SharedArrayBuffer 가능성 제거) */
+function toPureArrayBuffer(u8: Uint8Array): ArrayBuffer {
+  const ab = new ArrayBuffer(u8.byteLength);
+  new Uint8Array(ab).set(u8);
+  return ab;
+}
+
 export function randomBytes(len: number): Uint8Array {
   const b = new Uint8Array(len);
   crypto.getRandomValues(b);
@@ -19,7 +26,7 @@ export function randomBytes(len: number): Uint8Array {
 }
 
 export function b64OfBytes(bytes: Uint8Array): string {
-  return toB64(bytes.buffer);
+  return toB64(toPureArrayBuffer(bytes));
 }
 
 export function bytesFromB64(b64: string): Uint8Array {
@@ -35,8 +42,14 @@ export async function deriveKey(passphrase: string, salt: Uint8Array): Promise<C
     false,
     ['deriveKey']
   );
+
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 210_000, hash: 'SHA-256' },
+    {
+      name: 'PBKDF2',
+      salt: toPureArrayBuffer(salt),
+      iterations: 210_000,
+      hash: 'SHA-256',
+    },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -48,7 +61,7 @@ export async function encryptJson<T>(key: CryptoKey, value: T): Promise<{ ivB64:
   const enc = new TextEncoder();
   const iv = randomBytes(12);
   const plaintext = enc.encode(JSON.stringify(value));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: toPureArrayBuffer(iv) }, key, plaintext);
   return { ivB64: b64OfBytes(iv), ctB64: toB64(ct) };
 }
 
@@ -56,6 +69,6 @@ export async function decryptJson<T>(key: CryptoKey, payload: { ivB64: string; c
   const dec = new TextDecoder();
   const iv = bytesFromB64(payload.ivB64);
   const ct = fromB64(payload.ctB64);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: toPureArrayBuffer(iv) }, key, ct);
   return JSON.parse(dec.decode(pt)) as T;
 }
