@@ -260,6 +260,7 @@ export function DashboardPage() {
   );
 
   const [calendarCollapsed, setCalendarCollapsed] = useState(false);
+  const [expandedBudgetItem, setExpandedBudgetItem] = useState<string | null>(null);
 
   const [editing, setEditing] = useState<Record<string, any>>({});
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -508,56 +509,73 @@ export function DashboardPage() {
             <div className="divider" />
 
             {budgetEditMode ? (
-              <div className="table-scroll">
-                <table className="tight-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 200 }}>항목 이름</th>
-                      <th style={{ width: 120 }}>분류</th>
-                      <th className="right" style={{ width: 140 }}>캡(월)</th>
-                      <th className="right" style={{ width: 160 }}>캡(연)</th>
-                      <th style={{ width: 90 }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editItems.map(it => (
-                      <tr key={it.id}>
-                        <td>
-                          <input value={it.name} onChange={e => updateItem(it.id, { name: e.target.value })} />
-                        </td>
-                        <td>
-                          <select value={it.kind} onChange={e => updateItem(it.id, { kind: e.target.value as any })}>
-                            <option value="fuel">주유</option>
-                            <option value="grocery">마트</option>
-                            <option value="food">식비</option>
-                            <option value="online">온라인</option>
-                            <option value="transfer">이체(소비)</option>
-                            <option value="life">생활</option>
-                            <option value="buffer">예비비</option>
-                            <option value="custom">커스텀</option>
-                          </select>
-                        </td>
-                        <td className="right">
-                          <input value={String(it.monthCap)} inputMode="numeric" onChange={e => updateItem(it.id, { monthCap: Number(e.target.value.replaceAll(',','').trim()) || 0 })} />
-                        </td>
-                        <td className="right">
-                          <input
-                            value={it.yearCap === null ? '' : String(it.yearCap)}
-                            inputMode="numeric"
-                            placeholder={String(it.monthCap * 12)}
-                            onChange={e => {
-                              const v = e.target.value.trim();
-                              updateItem(it.id, { yearCap: v === '' ? null : (Number(v.replaceAll(',','').trim()) || 0) });
-                            }}
-                          />
-                        </td>
-                        <td className="right">
-                          <button className="btn danger" onClick={() => deleteBudgetItem(it.id)}>삭제</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                {editItems.map(it => {
+                  const isOpen = expandedBudgetItem === it.id;
+                  return (
+                    <div key={it.id} className={'budget-edit-card' + (isOpen ? ' open' : '')}>
+                      {!isOpen ? (
+                        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
+                          <div className="row" style={{ gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>{iconForBudgetItem(it.kind)}</span>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</div>
+                              <div className="muted small">월 {fmt.format(it.monthCap)}원</div>
+                            </div>
+                          </div>
+                          <button className="btn" style={{ fontSize: 12, padding: '6px 12px', flexShrink: 0 }} onClick={() => setExpandedBudgetItem(it.id)}>편집</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div className="form" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                            <label style={{ gridColumn: '1 / -1' }}>
+                              항목 이름
+                              <input value={it.name} onChange={e => updateItem(it.id, { name: e.target.value })} placeholder="이름" />
+                            </label>
+                            <label>
+                              분류
+                              <select value={it.kind} onChange={e => updateItem(it.id, { kind: e.target.value as any })}>
+                                <option value="fuel">⛽️ 주유</option>
+                                <option value="grocery">🛒 마트</option>
+                                <option value="food">🍽️ 식비</option>
+                                <option value="online">🛍️ 온라인</option>
+                                <option value="transfer">🔁 이체(소비)</option>
+                                <option value="life">🏠 생활</option>
+                                <option value="buffer">🪣 예비비</option>
+                                <option value="custom">🧩 커스텀</option>
+                              </select>
+                            </label>
+                            <label>
+                              월 한도 (원)
+                              <input
+                                value={String(it.monthCap)}
+                                inputMode="numeric"
+                                placeholder="0"
+                                onChange={e => updateItem(it.id, { monthCap: Number(e.target.value.replaceAll(',', '').trim()) || 0 })}
+                              />
+                            </label>
+                            <label style={{ gridColumn: '1 / -1' }}>
+                              연 한도 (원) — 비워두면 월×12 자동
+                              <input
+                                value={it.yearCap === null ? '' : String(it.yearCap)}
+                                inputMode="numeric"
+                                placeholder={String(it.monthCap * 12)}
+                                onChange={e => {
+                                  const v = e.target.value.trim();
+                                  updateItem(it.id, { yearCap: v === '' ? null : (Number(v.replaceAll(',', '').trim()) || 0) });
+                                }}
+                              />
+                            </label>
+                          </div>
+                          <div className="row" style={{ justifyContent: 'space-between' }}>
+                            <button className="btn danger" style={{ fontSize: 12, padding: '6px 12px' }} onClick={() => { deleteBudgetItem(it.id); setExpandedBudgetItem(null); }}>삭제</button>
+                            <button className="btn primary" style={{ fontSize: 12, padding: '6px 14px' }} onClick={() => setExpandedBudgetItem(null)}>완료</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
 

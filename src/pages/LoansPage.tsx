@@ -298,7 +298,12 @@ export function LoansPage() {
                       ) : (
                         monthPay.rows.map(r => (
                           <tr key={r.n}>
-                            <td className="mono">{r.n}</td>
+                            <td>
+                              <span className="installment-badge mono">
+                                <span style={{ fontWeight: 800 }}>{r.n}</span>
+                                <span className="muted"> / {selected!.termMonths}</span>
+                              </span>
+                            </td>
                             <td className="mono">{r.date}</td>
                             <td className="right mono">{fmt.format(r.totalPay)}원</td>
                             <td className="right mono">{fmt.format(r.remaining)}원</td>
@@ -531,7 +536,12 @@ export function LoansPage() {
                       <tbody>
                         {schedule.map(r => (
                           <tr key={r.n}>
-                            <td className="mono">{r.n}</td>
+                            <td>
+                              <span className="installment-badge mono">
+                                <span style={{ fontWeight: 800 }}>{r.n}</span>
+                                <span className="muted"> / {selected!.termMonths}</span>
+                              </span>
+                            </td>
                             <td className="mono">{r.date}</td>
                             <td className="right mono">{fmt.format(r.principalPay)}원</td>
                             <td className="right mono">{fmt.format(r.interestPay)}원</td>
