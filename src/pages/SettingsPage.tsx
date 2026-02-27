@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { AppSettings } from '../domain/models';
 import { CsvImportModal } from '../components/CsvImportModal';
+import { CategoryMetaEditor } from '../components/CategoryMetaEditor';
 
 export function SettingsPage() {
   const app = useApp();
@@ -136,6 +137,15 @@ export function SettingsPage() {
       </div>
 
       <CsvImportModal open={csvImportOpen} onClose={() => setCsvImportOpen(false)} />
+
+      <div className="card">
+        <h2>카테고리 아이콘/색상 커스터마이징</h2>
+        <div className="muted small" style={{ marginBottom: 12 }}>
+          각 카테고리의 이모지 아이콘과 색상을 변경할 수 있어. 차트와 거래 목록에 반영돼.
+        </div>
+        <div className="divider" />
+        <CategoryMetaEditor />
+      </div>
     </div>
   );
 }

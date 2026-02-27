@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '../app/AppContext';
-import { BudgetItem, Tx } from '../domain/models';
+import { BudgetItem, Loan, Tx } from '../domain/models';
 import { addMonthsUTC, makeUTCDate, parseYMD, ymd } from '../domain/date';
 import { BulkEntryModal } from '../components/BulkEntryModal';
 import { TransactionsManagerModal } from '../components/TransactionsManagerModal';
@@ -65,6 +65,27 @@ function kpiFromTx(arr: Tx[]) {
     else expense += t.amount;
   }
   return { income, expense, net: income - expense };
+}
+
+function loanRemainingBalance(loan: Loan): number {
+  const start = parseYMD(loan.startDate);
+  if (!start) return loan.principal;
+  const now = new Date();
+  const elapsedMonths = Math.max(0,
+    (now.getUTCFullYear() - start.getUTCFullYear()) * 12 +
+    (now.getUTCMonth() - start.getUTCMonth())
+  );
+  const N = Math.max(1, Math.floor(loan.termMonths));
+  if (elapsedMonths >= N) return 0;
+  const rMonthly = (loan.annualRate / 100) / 12;
+  if (loan.method === 'equal_principal') {
+    return Math.max(0, Math.round(loan.principal * (1 - elapsedMonths / N)));
+  }
+  if (rMonthly === 0) return Math.max(0, Math.round(loan.principal * (1 - elapsedMonths / N)));
+  const pow = Math.pow(1 + rMonthly, elapsedMonths);
+  const powN = Math.pow(1 + rMonthly, N);
+  const payment = loan.principal * rMonthly * powN / (powN - 1);
+  return Math.max(0, Math.round(loan.principal * pow - payment * (pow - 1) / rMonthly));
 }
 
 export function DashboardPage() {
@@ -204,6 +225,42 @@ export function DashboardPage() {
 
   const recentTx = useMemo(() => [...monthTx].sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 25), [monthTx]);
 
+  // 전월 비교 인사이트
+  const prevMonthCursor = useMemo(() => addMonthsUTC(monthCursor, -1), [monthCursor.y, monthCursor.m]);
+  const prevMonthTx = useMemo(() => app.tx.filter(t => {
+    const dt = parseYMD(t.date);
+    if (!dt) return false;
+    if (dt.getUTCFullYear() !== prevMonthCursor.y) return false;
+    if ((dt.getUTCMonth() + 1) !== prevMonthCursor.m) return false;
+    if (t.category.startsWith('이체/비지출')) return false;
+    const card = app.cards.find(c => c.id === t.cardId);
+    if (card?.type === 'transfer_nonspend') return false;
+    return true;
+  }), [app.tx, app.cards, prevMonthCursor.y, prevMonthCursor.m]);
+  const prevMonthKpi = useMemo(() => kpiFromTx(prevMonthTx), [prevMonthTx]);
+  const insightText = useMemo(() => {
+    if (prevMonthKpi.expense === 0) return null;
+    const diff = monthKpi.expense - prevMonthKpi.expense;
+    const pct = Math.round((diff / prevMonthKpi.expense) * 100);
+    if (pct === 0) return '지난달과 지출이 같아요';
+    return pct > 0
+      ? `지난달보다 ${pct}% 더 썼어요`
+      : `지난달보다 ${Math.abs(pct)}% 절약했어요 🎉`;
+  }, [monthKpi.expense, prevMonthKpi.expense]);
+  const insightUp = prevMonthKpi.expense > 0 && monthKpi.expense > prevMonthKpi.expense;
+
+  // 자산 현황
+  const totalAssets = useMemo(
+    () => app.cards.filter(c => c.trackBalance && (c.balance ?? 0) > 0).reduce((s, c) => s + (c.balance ?? 0), 0),
+    [app.cards]
+  );
+  const totalDebt = useMemo(
+    () => app.loans.reduce((sum, loan) => sum + loanRemainingBalance(loan), 0),
+    [app.loans]
+  );
+
+  const [calendarCollapsed, setCalendarCollapsed] = useState(false);
+
   const [editing, setEditing] = useState<Record<string, any>>({});
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const checkedAll = recentTx.length > 0 && checked.size === recentTx.length;
@@ -269,6 +326,56 @@ export function DashboardPage() {
 
         <div className="divider" />
 
+        {/* ── Hero 카드 ── */}
+        <div className="hero-card" style={{ marginBottom: 12 }}>
+          <div className="muted small">이번 달 지출</div>
+          <div className="hero-amount mono">{fmt.format(monthKpi.expense)}원</div>
+          {insightText && (
+            <div className="insight-chip" style={{ color: insightUp ? 'var(--bad)' : 'var(--good)' }}>
+              {insightUp ? '↑ ' : '↓ '}{insightText}
+            </div>
+          )}
+          <div className="muted small" style={{ marginTop: 8 }}>
+            수입 {fmt.format(monthKpi.income)}원 &nbsp;·&nbsp;
+            순저축&nbsp;
+            <span style={{ color: monthKpi.net >= 0 ? 'var(--good)' : 'var(--bad)', fontWeight: 600 }}>
+              {monthKpi.net >= 0 ? '+' : ''}{fmt.format(monthKpi.net)}원
+            </span>
+          </div>
+        </div>
+
+        {/* ── 자산 현황 ── */}
+        {(totalAssets > 0 || totalDebt > 0) && (
+          <div className="asset-card" style={{ marginBottom: 12 }}>
+            <div className="muted small" style={{ marginBottom: 8 }}>자산 현황</div>
+            <div style={{ display: 'flex', gap: isMobile ? 8 : 20, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <div className="muted small">총 자산</div>
+                <div className="mono" style={{ fontSize: 17, color: 'var(--good)', fontWeight: 700 }}>{fmt.format(totalAssets)}원</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <div className="muted small">총 부채</div>
+                <div className="mono" style={{ fontSize: 17, color: totalDebt > 0 ? 'var(--bad)' : 'var(--muted)', fontWeight: 700 }}>{fmt.format(totalDebt)}원</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 100 }}>
+                <div className="muted small">순자산</div>
+                <div className="mono" style={{ fontSize: 17, fontWeight: 800, color: (totalAssets - totalDebt) >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                  {fmt.format(totalAssets - totalDebt)}원
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── 달력 (접기 가능) ── */}
+        <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+          <div className="muted small">월별 달력</div>
+          <button className="btn ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => setCalendarCollapsed(p => !p)}>
+            {calendarCollapsed ? '펼치기 ▼' : '접기 ▲'}
+          </button>
+        </div>
+
+        {!calendarCollapsed && <>
         <div className="cal-head">
           {['일', '월', '화', '수', '목', '금', '토'].map(d => <div key={d}>{d}</div>)}
         </div>
@@ -319,6 +426,7 @@ export function DashboardPage() {
             </div>
           </div>
         ) : null}
+        </>}
 
         <div className="divider" />
 
