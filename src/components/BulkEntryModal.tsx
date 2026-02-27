@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { Tx } from '../domain/models';
 import { addMonthsUTC, makeUTCDate, ymd, parseYMD } from '../domain/date';
+import { useIsMobile } from "../app/useMedia";
 
 const fmt = new Intl.NumberFormat('ko-KR');
 type FeeMode = 'free' | 'manual';
@@ -31,6 +32,8 @@ function toNumberOrNaN(s: string): number {
 }
 
 export function BulkEntryModal({ open, onClose, initialDate }: { open: boolean; onClose: () => void; initialDate?: string }) {
+  const isMobile = useIsMobile();
+
   const app = useApp();
   const today = new Date();
   const initDate = initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate) ? initialDate : new Date().toISOString().slice(0,10);
@@ -313,7 +316,63 @@ function makeDefaultRow(): DraftRow {
               {drafts.length === 0 ? (
                 <div style={{ padding: 12 }} className="muted">입력 행이 없어. “행 추가”를 눌러줘.</div>
               ) : (
-                <table>
+                isMobile ? (
+                  <div className="txcard-list">
+                    {drafts.map((r) => (
+                      <div key={r.id} className="txcard">
+                        <div className="txrow">
+                          <label style={{ flex: 1 }}>결제수단
+                            <select value={r.cardId} onChange={e => updateRow(r.id, { cardId: e.target.value })}>
+                              {app.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ flex: 1 }}>카테고리
+                            <select value={r.category} onChange={e => updateRow(r.id, { category: e.target.value })}>
+                              {(entryType === 'income' ? categoryOptions.income : categoryOptions.expense).map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="txrow">
+                          <label style={{ flex: 1.2 }}>금액
+                            <input value={r.amount} onChange={e => updateRow(r.id, { amount: e.target.value })} inputMode="numeric" placeholder="예: 8200" />
+                          </label>
+                          <label style={{ flex: .8 }}>할부
+                            <select value={r.installments} onChange={e => updateRow(r.id, { installments: Number(e.target.value) })}>
+                              {[1,2,3,6,10,12,24].map(n => <option key={n} value={n}>{n===1?'일시불':`${n}개월`}</option>)}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="txrow">
+                          <label style={{ flex: 1 }}>수수료
+                            <select value={r.feeMode} onChange={e => updateRow(r.id, { feeMode: e.target.value as FeeMode })}>
+                              <option value="free">무이자</option>
+                              <option value="manual">수동%</option>
+                            </select>
+                          </label>
+
+                          <label style={{ flex: 1 }}>율(%)
+                            <input value={r.feeRate} onChange={e => updateRow(r.id, { feeRate: e.target.value })} inputMode="decimal" disabled={r.feeMode !== 'manual'} placeholder="%" />
+                          </label>
+
+                          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                            <button className="btn danger" onClick={() => removeRow(r.id)} disabled={drafts.length <= 1}>삭제</button>
+                          </div>
+                        </div>
+
+                        <label>메모
+                          <input value={r.memo} onChange={e => updateRow(r.id, { memo: e.target.value })} placeholder="메모" />
+                        </label>
+
+                        <label>태그
+                          <input value={r.tags} onChange={e => updateRow(r.id, { tags: e.target.value })} placeholder="#점심, #스터디카페" />
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <table>
                   <thead>
                     <tr>
                       <th style={{width: 180}}>결제수단</th>
@@ -374,6 +433,7 @@ function makeDefaultRow(): DraftRow {
                     ))}
                   </tbody>
                 </table>
+                )
               )}
             </div>
 
@@ -389,115 +449,240 @@ function makeDefaultRow(): DraftRow {
             <div className="divider" />
 
             {existingForDay.length === 0 ? (
-              <p className="muted">이 날짜에 기록된 거래가 없어.</p>
+              <div style={{ padding: 12 }} className="muted">이 날짜에 기록된 거래가 없어.</div>
             ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{width: 44}}>
-                        <input type="checkbox" checked={checkedAll} onChange={() => {
-                          if (checkedAll) setCheckedIds(new Set());
-                          else setCheckedIds(new Set(existingForDay.map(t => t.id)));
-                        }} />
-                      </th>
-                      <th style={{width: 180}}>카테고리</th>
-                      <th style={{width: 180}}>결제수단</th>
-                      <th className="right" style={{width: 140}}>금액</th>
-                      <th style={{width: 90}}>할부</th>
-                      <th style={{width: 120}}>수수료</th>
-                      <th style={{width: 110}}>수수료율</th>
-                      <th style={{width: 240}}>메모</th>
-                      <th style={{width: 200}}>태그</th>
-                      <th style={{width: 220}}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {existingForDay.map(t => {
-                      const card = app.cards.find(c => c.id === t.cardId);
-                      const isEditing = editingId === t.id;
-                      const d = editDraft;
-                      const feeTxt = t.feeMode === 'manual' ? `수동 ${t.feeRate}%` : '무이자';
-                      return (
-                        <tr key={t.id}>
-                          <td>
-                            <input type="checkbox" checked={checkedIds.has(t.id)} onChange={() => toggleCheck(t.id)} />
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <select value={d?.category ?? t.category} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), category: e.target.value }))}>
-                                {(entryType === 'income' ? categoryOptions.income : categoryOptions.expense).map(c => <option key={c} value={c}>{c}</option>)}
-                              </select>
-                            ) : t.category}
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <select value={d?.cardId ?? t.cardId} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), cardId: e.target.value }))}>
-                                {app.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                              </select>
-                            ) : (card?.name ?? '(삭제됨)')}
-                          </td>
-                          <td className="right mono">
-                            {isEditing ? (
-                              <input value={d?.amount ?? String(t.amount)} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), amount: e.target.value }))} inputMode="numeric" />
-                            ) : fmt.format(t.amount) + '원'}
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <select value={d?.installments ?? t.installments} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), installments: Number(e.target.value) }))}>
-                                {[1,2,3,6,10,12,24].map(n => <option key={n} value={n}>{n===1?'일시불':`${n}개월`}</option>)}
-                              </select>
-                            ) : (t.installments === 1 ? '일시불' : `${t.installments}개월`)}
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <select value={d?.feeMode ?? t.feeMode} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeMode: e.target.value as FeeMode }))}>
-                                <option value="free">무이자</option>
-                                <option value="manual">수동%</option>
-                              </select>
-                            ) : feeTxt}
-                          </td>
-                          <td>
-                            {isEditing ? (
-                              <input
-                                value={d?.feeRate ?? String(t.feeRate)}
-                                onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeRate: e.target.value }))}
-                                inputMode="decimal"
-                                disabled={(d?.feeMode ?? t.feeMode) !== 'manual'}
-                                placeholder="%"
-                              />
-                            ) : (t.feeMode === 'manual' ? String(t.feeRate) + '%' : '0%')}
-                          </td>
-                          <td className="muted">
-                            {isEditing ? (
-                              <input value={d?.memo ?? t.memo} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), memo: e.target.value }))} />
-                            ) : t.memo}
-                          </td>
-                          <td className="muted">
-                            {isEditing ? (
-                              <input value={d?.tags ?? ((t.tags ?? []).join(', '))} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), tags: e.target.value }))} />
-                            ) : (t.tags && t.tags.length ? t.tags.map(x => '#' + x).join(', ') : '')}
-                          </td>
-                          <td className="right">
-                            {isEditing ? (
-                              <>
-                                <button className="btn primary" onClick={() => saveInlineEdit(t)}>저장</button>
-                                <button className="btn" onClick={() => { setEditingId(null); setEditDraft(null); }}>취소</button>
-                                <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
-                              </>
-                            ) : (
-                              <>
-                                <button className="btn" onClick={() => startInlineEdit(t)}>편집</button>
-                                <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              isMobile ? (
+                                  <div className="txcard-list">
+                                    <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <label style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checkedAll}
+                                          onChange={() => {
+                                            if (checkedAll) setCheckedIds(new Set());
+                                            else setCheckedIds(new Set(existingForDay.map(t => t.id)));
+                                          }}
+                                        />
+                                        <span className="muted small">전체 선택</span>
+                                      </label>
+                                      <span className="muted small">{existingForDay.length}건</span>
+                                    </div>
+
+                                    <div className="divider" />
+
+                                    {existingForDay.map(t => {
+                                      const card = app.cards.find(c => c.id === t.cardId);
+                                      const isEditing = editingId === t.id;
+                                      const d = editDraft;
+                                      const feeTxt = t.feeMode === 'manual' ? `수동 ${t.feeRate}%` : '무이자';
+                                      return (
+                                        <div key={t.id} className="txcard">
+                                          <div className="txrow" style={{ alignItems: 'flex-end' }}>
+                                            <label style={{ display: 'flex', flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                              <input type="checkbox" checked={checkedIds.has(t.id)} onChange={() => toggleCheck(t.id)} />
+                                              <span className="muted small">선택</span>
+                                            </label>
+
+                                            <div style={{ flex: 1 }}>
+                                              {isEditing ? (
+                                                <select
+                                                  value={d?.category ?? t.category}
+                                                  onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), category: e.target.value }))}
+                                                >
+                                                  {(entryType === 'income' ? categoryOptions.income : categoryOptions.expense).map(c => (
+                                                    <option key={c} value={c}>{c}</option>
+                                                  ))}
+                                                </select>
+                                              ) : (
+                                                <div style={{ fontWeight: 700 }}>{t.category}</div>
+                                              )}
+                                            </div>
+
+                                            <div style={{ width: 140 }}>
+                                              {isEditing ? (
+                                                <input value={d?.amount ?? String(t.amount)} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), amount: e.target.value }))} inputMode="numeric" />
+                                              ) : (
+                                                <div className="mono right" style={{ fontWeight: 800 }}>{fmt.format(t.amount)}원</div>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <div className="txrow">
+                                            <div className="muted small" style={{ flex: 1 }}>
+                                              결제수단: {isEditing ? (
+                                                <select value={d?.cardId ?? t.cardId} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), cardId: e.target.value }))}>
+                                                  {app.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                              ) : (card?.name ?? '(삭제됨)')}
+                                            </div>
+                                            <div className="muted small" style={{ flex: 1 }}>
+                                              할부: {isEditing ? (
+                                                <select value={d?.installments ?? t.installments} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), installments: Number(e.target.value) }))}>
+                                                  {[1,2,3,6,10,12,24].map(n => <option key={n} value={n}>{n===1?'일시불':`${n}개월`}</option>)}
+                                                </select>
+                                              ) : (t.installments === 1 ? '일시불' : `${t.installments}개월`)}
+                                            </div>
+                                          </div>
+
+                                          <div className="txrow">
+                                            <div className="muted small" style={{ flex: 1 }}>
+                                              수수료: {isEditing ? (
+                                                <select value={d?.feeMode ?? t.feeMode} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeMode: e.target.value as FeeMode }))}>
+                                                  <option value="free">무이자</option>
+                                                  <option value="manual">수동%</option>
+                                                </select>
+                                              ) : feeTxt}
+                                            </div>
+                                            <div className="muted small" style={{ flex: 1 }}>
+                                              수수료율: {isEditing ? (
+                                                <input value={d?.feeRate ?? String(t.feeRate)} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeRate: e.target.value }))} inputMode="decimal" disabled={(d?.feeMode ?? t.feeMode) !== 'manual'} placeholder="%" />
+                                              ) : (t.feeMode === 'manual' ? String(t.feeRate) + '%' : '0%')}
+                                            </div>
+                                          </div>
+
+                                          <label>메모
+                                            {isEditing ? (
+                                              <input value={d?.memo ?? t.memo} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), memo: e.target.value }))} />
+                                            ) : (
+                                              <div className="muted small">{t.memo || '-'}</div>
+                                            )}
+                                          </label>
+
+                                          <label>태그
+                                            {isEditing ? (
+                                              <input value={d?.tags ?? (t.tags ?? []).join(', ')} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), tags: e.target.value }))} />
+                                            ) : (
+                                              <div className="muted small">{t.tags && t.tags.length ? t.tags.map(x => '#' + x).join(', ') : '-'}</div>
+                                            )}
+                                          </label>
+
+                                          <div className="txactions">
+                                            {isEditing ? (
+                                              <>
+                                                <button className="btn primary" onClick={() => saveInlineEdit(t)}>저장</button>
+                                                <button className="btn" onClick={() => { setEditingId(null); setEditDraft(null); }}>취소</button>
+                                                <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <button className="btn primary" onClick={() => startInlineEdit(t)}>편집</button>
+                                                <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
+                                              </>
+                                            )}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+              ) : (
+                <div className="table-scroll">
+                                    <table>
+                                    <thead>
+                                      <tr>
+                                        <th style={{width: 44}}>
+                                          <input type="checkbox" checked={checkedAll} onChange={() => {
+                                            if (checkedAll) setCheckedIds(new Set());
+                                            else setCheckedIds(new Set(existingForDay.map(t => t.id)));
+                                          }} />
+                                        </th>
+                                        <th style={{width: 180}}>카테고리</th>
+                                        <th style={{width: 180}}>결제수단</th>
+                                        <th className="right" style={{width: 140}}>금액</th>
+                                        <th style={{width: 90}}>할부</th>
+                                        <th style={{width: 120}}>수수료</th>
+                                        <th style={{width: 110}}>수수료율</th>
+                                        <th style={{width: 240}}>메모</th>
+                                        <th style={{width: 200}}>태그</th>
+                                        <th style={{width: 220}}></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {existingForDay.map(t => {
+                                        const card = app.cards.find(c => c.id === t.cardId);
+                                        const isEditing = editingId === t.id;
+                                        const d = editDraft;
+                                        const feeTxt = t.feeMode === 'manual' ? `수동 ${t.feeRate}%` : '무이자';
+                                        return (
+                                          <tr key={t.id}>
+                                            <td>
+                                              <input type="checkbox" checked={checkedIds.has(t.id)} onChange={() => toggleCheck(t.id)} />
+                                            </td>
+                                            <td>
+                                              {isEditing ? (
+                                                <select value={d?.category ?? t.category} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), category: e.target.value }))}>
+                                                  {(entryType === 'income' ? categoryOptions.income : categoryOptions.expense).map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                              ) : t.category}
+                                            </td>
+                                            <td>
+                                              {isEditing ? (
+                                                <select value={d?.cardId ?? t.cardId} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), cardId: e.target.value }))}>
+                                                  {app.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                              ) : (card?.name ?? '(삭제됨)')}
+                                            </td>
+                                            <td className="right mono">
+                                              {isEditing ? (
+                                                <input value={d?.amount ?? String(t.amount)} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), amount: e.target.value }))} inputMode="numeric" />
+                                              ) : fmt.format(t.amount) + '원'}
+                                            </td>
+                                            <td>
+                                              {isEditing ? (
+                                                <select value={d?.installments ?? t.installments} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), installments: Number(e.target.value) }))}>
+                                                  {[1,2,3,6,10,12,24].map(n => <option key={n} value={n}>{n===1?'일시불':`${n}개월`}</option>)}
+                                                </select>
+                                              ) : (t.installments === 1 ? '일시불' : `${t.installments}개월`)}
+                                            </td>
+                                            <td>
+                                              {isEditing ? (
+                                                <select value={d?.feeMode ?? t.feeMode} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeMode: e.target.value as FeeMode }))}>
+                                                  <option value="free">무이자</option>
+                                                  <option value="manual">수동%</option>
+                                                </select>
+                                              ) : feeTxt}
+                                            </td>
+                                            <td>
+                                              {isEditing ? (
+                                                <input
+                                                  value={d?.feeRate ?? String(t.feeRate)}
+                                                  onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), feeRate: e.target.value }))}
+                                                  inputMode="decimal"
+                                                  disabled={(d?.feeMode ?? t.feeMode) !== 'manual'}
+                                                  placeholder="%"
+                                                />
+                                              ) : (t.feeMode === 'manual' ? String(t.feeRate) + '%' : '0%')}
+                                            </td>
+                                            <td className="muted">
+                                              {isEditing ? (
+                                                <input value={d?.memo ?? t.memo} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), memo: e.target.value }))} />
+                                              ) : t.memo}
+                                            </td>
+                                            <td className="muted">
+                                              {isEditing ? (
+                                                <input value={d?.tags ?? ((t.tags ?? []).join(', '))} onChange={e => setEditDraft(prev => ({ ...(prev ?? {} as any), tags: e.target.value }))} />
+                                              ) : (t.tags && t.tags.length ? t.tags.map(x => '#' + x).join(', ') : '')}
+                                            </td>
+                                            <td className="right">
+                                              {isEditing ? (
+                                                <>
+                                                  <button className="btn primary" onClick={() => saveInlineEdit(t)}>저장</button>
+                                                  <button className="btn" onClick={() => { setEditingId(null); setEditDraft(null); }}>취소</button>
+                                                  <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  <button className="btn" onClick={() => startInlineEdit(t)}>편집</button>
+                                                  <button className="btn danger" onClick={() => deleteSingle(t)}>삭제</button>
+                                                </>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                </div>
+              )
             )}
 
             <div className="divider" />
