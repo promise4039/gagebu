@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { Card, CardVersion, WeekendAdjust } from '../domain/models';
 import { addMonthsUTC, ymd } from '../domain/date';
@@ -47,12 +47,25 @@ function summarizeCycle(v: CardVersion): string {
 export function CardsPage() {
   const app = useApp();
   const [editMode, setEditMode] = useState(false);
+const isMobile = useIsMobile(520);
+const [filter, setFilter] = useState<'all' | 'account' | 'credit' | 'debit_cash' | 'transfer'>('all');
+const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<any>({});
   const [verModal, setVerModal] = useState<{ cardId: string; verId: string | null } | null>(null);
 
   const cards = useMemo(() => [...app.cards].sort((a,b)=>a.name.localeCompare(b.name)), [app.cards]);
+
+const filteredCards = useMemo(() => {
+  if (filter === 'all') return cards;
+  if (filter === 'account') return cards.filter(c => c.type === 'account');
+  if (filter === 'credit') return cards.filter(c => c.type === 'credit');
+  if (filter === 'debit_cash') return cards.filter(c => c.type === 'debit' || c.type === 'cash');
+  return cards.filter(c => c.type === 'transfer_spend' || c.type === 'transfer_nonspend');
+}, [cards, filter]);
+
 
   const versionsByCard = useMemo(() => {
     const map = new Map<string, CardVersion[]>();
@@ -70,6 +83,11 @@ export function CardsPage() {
 
   function startEdit(c: Card) {
     if (!editMode) return;
+    setExpanded(prev => {
+      const n = new Set(prev);
+      n.add(c.id);
+      return n;
+    });
     setEditingId(c.id);
     setDraft({
       name: c.name,
@@ -126,6 +144,17 @@ export function CardsPage() {
     setVerModal(null);
   }
 
+
+
+function toggleExpand(id: string) {
+  setExpanded(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  });
+}
+
   return (
     <div className="container">
       <div className="card">
@@ -143,102 +172,284 @@ export function CardsPage() {
           </div>
         </div>
 
-        <div className="divider" />
+<div className="divider" />
 
-        {cards.length === 0 ? (
-          <p className="muted">아직 결제수단이 없어.</p>
-        ) : (
-          <div className="table-scroll">
-            <table className="tight-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 190 }}>이름</th>
-                  <th style={{ width: 90 }}>타입</th>
-                  <th style={{ width: 90 }}>활성</th>
-                  <th style={{ width: 120 }}>잔액추적</th>
-                  <th style={{ width: 140 }} className="right">잔액</th>
-                  <th>목적(계좌)</th>
-                  <th style={{ width: 240 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {cards.map(c => {
-                  const isEditing = editingId === c.id;
-                  const d = isEditing ? draft : null;
-                  return (
-                    <tr key={c.id}>
-                      <td>{isEditing ? <input value={d.name} onChange={e=>setDraft((p:any)=>({...p,name:e.target.value}))}/> : c.name}</td>
-                      <td>
+{isMobile ? (
+  <>
+    <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+      <button className={filter === 'all' ? 'btn primary' : 'btn'} onClick={() => setFilter('all')}>전체</button>
+      <button className={filter === 'account' ? 'btn primary' : 'btn'} onClick={() => setFilter('account')}>계좌</button>
+      <button className={filter === 'credit' ? 'btn primary' : 'btn'} onClick={() => setFilter('credit')}>신용</button>
+      <button className={filter === 'debit_cash' ? 'btn primary' : 'btn'} onClick={() => setFilter('debit_cash')}>체크·현금</button>
+      <button className={filter === 'transfer' ? 'btn primary' : 'btn'} onClick={() => setFilter('transfer')}>이체</button>
+    </div>
+
+    {filteredCards.length === 0 ? (
+      <p className="muted">표시할 결제수단이 없어.</p>
+    ) : (
+      <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+        {filteredCards.map(c => {
+          const isEditing = editingId === c.id;
+          const d = isEditing ? draft : null;
+          const isOpen = expanded.has(c.id) || isEditing;
+
+          const vers = versionsByCard.get(c.id) ?? [];
+          const today = ymd(new Date());
+          const activeVer = vers.filter(v => v.validFrom <= today).slice(-1)[0] ?? null;
+          const cycleTxt = activeVer ? summarizeCycle(activeVer) : '규칙 없음';
+          const payDayTxt = activeVer ? dayLabel(activeVer.paymentDay) : '-';
+
+          const balanceTxt = moneyFmt.format(Number((c.balance ?? 0) || 0)) + '원';
+
+          return (
+            <div key={c.id} className="card" style={{ padding: 12 }}>
+              <div
+                className="row"
+                style={{ justifyContent: 'space-between', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                onClick={() => toggleExpand(c.id)}
+              >
+                <div className="row" style={{ gap: 10, alignItems: 'center', minWidth: 0 }}>
+                  <div style={{ width: 30, minWidth: 30, textAlign: 'center' }}>{typeIcon(c.type)}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {c.name}
+                    </div>
+                    <div className="muted small" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {typeLabel(c.type)}
+                      {c.type === 'credit' ? ` · ${cycleTxt} · 결제 ${payDayTxt}` : (c.purpose ? ` · ${c.purpose}` : '')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="right" style={{ minWidth: 110 }}>
+                  <div className="muted small">{c.type === 'credit' ? '결제일' : '잔액'}</div>
+                  <div className="mono" style={{ fontWeight: 800, textAlign: 'right' }}>
+                    {c.type === 'credit' ? payDayTxt : balanceTxt}
+                  </div>
+                </div>
+              </div>
+
+              {isOpen ? (
+                <div style={{ marginTop: 12 }}>
+                  <div className="card" style={{ boxShadow: 'none', padding: 12 }}>
+                    <div className="form">
+                      <label>이름
                         {isEditing ? (
-                          <select value={d.type} onChange={e => {
-                            const t = e.target.value as any;
-                            setDraft((p:any)=>({
-                              ...p,
-                              type: t,
-                              trackBalance: t === 'credit' ? false : (p.trackBalance ?? true),
-                              balance: t === 'credit' ? '' : (p.balance ?? 0),
-                            }));
-                          }}>
-                            <option value="account">계좌</option>
-                            <option value="credit">신용</option>
-                            <option value="debit">체크</option>
-                            <option value="cash">현금</option>
-                            <option value="transfer_spend">이체(소비)</option>
-                            <option value="transfer_nonspend">이체(비지출)</option>
-                          </select>
-                        ) : typeLabel(c.type)}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <select value={String(d.isActive)} onChange={e=>setDraft((p:any)=>({...p,isActive:e.target.value==='true'}))}>
-                            <option value="true">활성</option>
-                            <option value="false">비활성</option>
-                          </select>
-                        ) : (c.isActive ? '활성' : '비활성')}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <select value={String(d.type === 'credit' ? false : d.trackBalance)} disabled={d.type==='credit'} onChange={e=>setDraft((p:any)=>({...p,trackBalance:e.target.value==='true'}))}>
-                            <option value="true">예</option>
-                            <option value="false">아니오</option>
-                          </select>
-                        ) : (c.type === 'credit' ? '—' : (c.trackBalance ? '예' : '아니오'))}
-                      </td>
-                      <td className="right mono">
-                        {isEditing ? (
-                          <input value={String(d.balance)} inputMode="numeric" disabled={d.type==='credit' || !d.trackBalance} onChange={e=>setDraft((p:any)=>({...p,balance:e.target.value}))}/>
-                        ) : (c.balance === null ? '—' : new Intl.NumberFormat('ko-KR').format(c.balance) + '원')}
-                      </td>
-                      <td>
-                        {isEditing ? (
-                          <input value={String(d.purpose ?? '')} disabled={d.type!=='account'} onChange={e=>setDraft((p:any)=>({...p,purpose:e.target.value}))} placeholder="예: 생활비/고정지출"/>
-                        ) : (c.type==='account' ? (c.purpose || '') : '—')}
-                      </td>
-                      <td className="right">
+                          <input style={{ fontSize: 16 }} value={d.name} onChange={e => setDraft((p: any) => ({ ...p, name: e.target.value }))} />
+                        ) : (
+                          <input style={{ fontSize: 16 }} value={c.name} disabled />
+                        )}
+                      </label>
+
+                      <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
+                        <label style={{ flex: 1, minWidth: 180 }}>타입
+                          {isEditing ? (
+                            <select style={{ fontSize: 16 }} value={d.type} onChange={e => {
+                              const nextType = e.target.value as Card['type'];
+                              setDraft((p: any) => ({
+                                ...p,
+                                type: nextType,
+                                trackBalance: nextType === 'credit' ? false : Boolean(p.trackBalance),
+                              }));
+                            }}>
+                              <option value="account">계좌</option>
+                              <option value="credit">신용</option>
+                              <option value="debit">체크</option>
+                              <option value="cash">현금</option>
+                              <option value="transfer_spend">이체(소비)</option>
+                              <option value="transfer_nospend">이체(비지출)</option>
+                            </select>
+                          ) : (
+                            <input style={{ fontSize: 16 }} value={typeLabel(c.type)} disabled />
+                          )}
+                        </label>
+
+                        <label style={{ width: 120 }}>활성
+                          {isEditing ? (
+                            <select style={{ fontSize: 16 }} value={d.isActive ? 'Y' : 'N'} onChange={e => setDraft((p: any) => ({ ...p, isActive: e.target.value === 'Y' }))}>
+                              <option value="Y">켜짐</option>
+                              <option value="N">꺼짐</option>
+                            </select>
+                          ) : (
+                            <input style={{ fontSize: 16 }} value={c.isActive ? '켜짐' : '꺼짐'} disabled />
+                          )}
+                        </label>
+                      </div>
+
+                      {((isEditing ? d.type : c.type) !== 'credit') ? (
+                        <>
+                          <label>잔액 추적
+                            {isEditing ? (
+                              <select style={{ fontSize: 16 }} value={d.trackBalance ? 'Y' : 'N'} onChange={e => setDraft((p: any) => ({ ...p, trackBalance: e.target.value === 'Y' }))}>
+                                <option value="Y">켜짐</option>
+                                <option value="N">꺼짐</option>
+                              </select>
+                            ) : (
+                              <input style={{ fontSize: 16 }} value={c.trackBalance ? '켜짐' : '꺼짐'} disabled />
+                            )}
+                          </label>
+
+                          <label>잔액(원)
+                            {isEditing ? (
+                              <input
+                                style={{ fontSize: 16, textAlign: 'right' as const }}
+                                value={moneyFmt.format(Number(d.balance ?? 0))}
+                                onChange={e => {
+                                  const n = Number(String(e.target.value).replace(/[^0-9\-]/g, '')) || 0;
+                                  setDraft((p: any) => ({ ...p, balance: n }));
+                                }}
+                                inputMode="numeric"
+                              />
+                            ) : (
+                              <input style={{ fontSize: 16, textAlign: 'right' as const }} value={balanceTxt} disabled />
+                            )}
+                          </label>
+                        </>
+                      ) : (
+                        <div className="notice">신용카드는 잔액 추적을 사용하지 않고, 청구/명세서에서 관리해.</div>
+                      )}
+
+                      {(isEditing ? d.type : c.type) === 'account' ? (
+                        <label>목적(계좌 메모)
+                          {isEditing ? (
+                            <input style={{ fontSize: 16 }} value={d.purpose ?? ''} onChange={e => setDraft((p: any) => ({ ...p, purpose: e.target.value }))} />
+                          ) : (
+                            <input style={{ fontSize: 16 }} value={c.purpose ?? ''} disabled />
+                          )}
+                        </label>
+                      ) : null}
+                    </div>
+
+                    {(!isMobile && editMode) ? (
+                      <div className="row" style={{ justifyContent: 'space-between', marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
                         {isEditing ? (
                           <>
-                            <button className="btn primary" onClick={saveEdit}>저장</button>
                             <button className="btn" onClick={cancelEdit}>취소</button>
                             <button className="btn danger" onClick={() => del(c.id)}>삭제</button>
-                          </>
-                        ) : editMode ? (
-                          <>
-                            <button className="btn" onClick={() => startEdit(c)}>편집</button>
-                            <button className="btn danger" onClick={() => del(c.id)}>삭제</button>
-                            {c.type === 'credit' ? <button className="btn" onClick={() => setVerModal({ cardId: c.id, verId: null })}>규칙</button> : null}
+                            <button className="btn primary" onClick={saveEdit}>저장</button>
                           </>
                         ) : (
-                          <span className="muted small">—</span>
+                          <>
+                            <button className="btn" onClick={() => startEdit(c)}>수정</button>
+                            <button className="btn danger" onClick={() => del(c.id)}>삭제</button>
+                            {c.type === 'credit' ? (
+                              <button className="btn" onClick={() => setVerModal({ cardId: c.id, verId: null })}>규칙</button>
+                            ) : null}
+                          </>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
+                      </div>
+                    ) : (
+                      <div className="muted small" style={{ marginTop: 10 }}>편집을 켜면 수정/삭제가 가능해.</div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </>
+) : (
+  <>
+    {cards.length === 0 ? (
+      <p className="muted">아직 결제수단이 없어.</p>
+    ) : (
+      <div className="table-scroll">
+        <table className="tight-table">
+          <thead>
+            <tr>
+              <th style={{ width: 190 }}>이름</th>
+              <th style={{ width: 90 }}>타입</th>
+              <th style={{ width: 90 }}>활성</th>
+              <th style={{ width: 120 }}>잔액추적</th>
+              <th style={{ width: 140 }} className="right">잔액</th>
+              <th>목적(계좌)</th>
+              <th style={{ width: 240 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {cards.map(c => {
+              const isEditing = editingId === c.id;
+              const d = isEditing ? draft : null;
+              return (
+                <tr key={c.id}>
+                  <td>{isEditing ? <input value={d.name} onChange={e=>setDraft((p:any)=>({...p,name:e.target.value}))}/> : c.name}</td>
+                  <td>
+                    {isEditing ? (
+                      <select value={d.type} onChange={e => {
+                        const nextType = e.target.value as Card['type'];
+                        setDraft((p:any)=>({
+                          ...p,
+                          type: nextType,
+                          trackBalance: nextType === 'credit' ? false : Boolean(p.trackBalance),
+                        }));
+                      }}>
+                        <option value="account">계좌</option>
+                        <option value="credit">신용</option>
+                        <option value="debit">체크</option>
+                        <option value="cash">현금</option>
+                        <option value="transfer_spend">이체(소비)</option>
+                        <option value="transfer_nospend">이체(비지출)</option>
+                      </select>
+                    ) : typeLabel(c.type)}
+                  </td>
+                  <td>{isEditing ? (
+                    <select value={d.isActive?'Y':'N'} onChange={e=>setDraft((p:any)=>({...p,isActive:e.target.value==='Y'}))}>
+                      <option value="Y">Y</option>
+                      <option value="N">N</option>
+                    </select>
+                  ) : (c.isActive ? 'Y' : 'N')}</td>
+                  <td>{(isEditing ? d.type : c.type) === 'credit' ? <span className="muted small">—</span> : (
+                    isEditing ? (
+                      <select value={d.trackBalance?'Y':'N'} onChange={e=>setDraft((p:any)=>({...p,trackBalance:e.target.value==='Y'}))}>
+                        <option value="Y">Y</option>
+                        <option value="N">N</option>
+                      </select>
+                    ) : (c.trackBalance ? 'Y' : 'N')
+                  )}</td>
+                  <td className="right">{(isEditing ? d.type : c.type) === 'credit' ? <span className="muted small">—</span> : (
+                    isEditing ? (
+                      <input className="right" value={moneyFmt.format(Number(d.balance ?? 0))} onChange={e => {
+                        const n = Number(String(e.target.value).replace(/[^0-9\-]/g, '')) || 0;
+                        setDraft((p:any)=>({...p,balance:n}));
+                      }} inputMode="numeric" />
+                    ) : moneyFmt.format(Number(c.balance ?? 0))
+                  )}</td>
+                  <td>{(isEditing ? d.type : c.type) === 'account' ? (
+                    isEditing ? (
+                      <input value={d.purpose ?? ''} onChange={e=>setDraft((p:any)=>({...p,purpose:e.target.value}))}/>
+                    ) : (c.purpose ?? '')
+                  ) : <span className="muted small">—</span>}</td>
+                  <td className="right">
+                    {editMode ? (
+                      isEditing ? (
+                        <>
+                          <button className="btn primary" onClick={saveEdit}>저장</button>
+                          <button className="btn" onClick={cancelEdit}>취소</button>
+                          <button className="btn danger" onClick={() => del(c.id)}>삭제</button>
+                          {c.type === 'credit' ? <button className="btn" onClick={() => setVerModal({ cardId: c.id, verId: null })}>규칙</button> : null}
+                        </>
+                      ) : (
+                        <>
+                          <button className="btn" onClick={() => startEdit(c)}>편집</button>
+                          <button className="btn danger" onClick={() => del(c.id)}>삭제</button>
+                          {c.type === 'credit' ? <button className="btn" onClick={() => setVerModal({ cardId: c.id, verId: null })}>규칙</button> : null}
+                        </>
+                      )
+                    ) : (
+                      <span className="muted small">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </>
+)}
         <div className="divider" />
         <div className="notice">
           • “목적”은 계좌 관리용 메모야. (예: 생활비/고정지출, 비상금 등)<br/>
@@ -504,4 +715,42 @@ export function CardsPage() {
       </div>
     );
   }
+}
+
+
+function useIsMobile(maxWidth = 520): boolean {
+  const get = () => (typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(`(max-width: ${maxWidth}px)`).matches
+    : false);
+
+  const [isMobile, setIsMobile] = useState<boolean>(get);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const onChange = () => setIsMobile(mql.matches);
+    onChange();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onChange);
+      return () => mql.removeEventListener('change', onChange);
+    }
+    // Safari old fallback
+    // eslint-disable-next-line deprecation/deprecation
+    mql.addListener(onChange);
+    // eslint-disable-next-line deprecation/deprecation
+    return () => mql.removeListener(onChange);
+  }, [maxWidth]);
+
+  return isMobile;
+}
+
+const moneyFmt = new Intl.NumberFormat('ko-KR');
+
+function typeIcon(t: Card['type']) {
+  if (t === 'credit') return '💳';
+  if (t === 'debit') return '💳';
+  if (t === 'cash') return '💵';
+  if (t === 'account') return '🏦';
+  if (t === 'transfer_spend') return '🔁';
+  return '🔁';
 }
