@@ -5,15 +5,19 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { CardsPage } from '../pages/CardsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { LoansPage } from '../pages/LoansPage';
+import { TransactionsPage } from '../pages/TransactionsPage';
+import { AnalyticsPage } from '../pages/AnalyticsPage';
 
-function Tab({ to, label }: { to: string; label: string }) {
+function Tab({ to, icon, label, end }: { to: string; icon: string; label: string; end?: boolean }) {
   return (
     <NavLink
       to={to}
+      end={end}
       className={({ isActive }) => 'tab' + (isActive ? ' active' : '')}
       style={{ textDecoration: 'none' }}
     >
-      {label}
+      <span className="tab-icon">{icon}</span>
+      <span className="tab-label">{label}</span>
     </NavLink>
   );
 }
@@ -37,6 +41,8 @@ export function AppShell() {
           <Route path="/cards" element={<CardsPage />} />
           <Route path="/loans" element={<LoansPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/transactions" element={<TransactionsPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
         </Routes>
 
         {noticeOpen ? (
@@ -52,10 +58,10 @@ export function AppShell() {
 
       <div className="bottom-nav">
         <div className="nav-inner">
-          <Tab to="/" label="대시보드" />
-          <Tab to="/cards" label="계좌/카드" />
-          <Tab to="/loans" label="대출/카드" />
-          <Tab to="/settings" label="설정" />
+          <Tab to="/" icon="🏠" label="대시보드" end />
+          <Tab to="/cards" icon="💳" label="계좌/카드" />
+          <Tab to="/loans" icon="📋" label="대출/카드" />
+          <Tab to="/settings" icon="⚙️" label="설정" />
         </div>
       </div>
     </>

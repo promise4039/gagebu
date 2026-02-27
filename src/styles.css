@@ -30,6 +30,7 @@ a{color:inherit}
   backdrop-filter: blur(10px);
   background: rgba(11,16,32,.65);
   border-bottom:1px solid var(--line);
+  padding-top: env(safe-area-inset-top);
 }
 .header-inner{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 18px;}
 .h1{margin:0;font-size:18px;}
@@ -307,8 +308,23 @@ tr:last-child td{border-bottom:none}
   flex: 1;
   text-align: center;
   border-radius: 14px;
-  padding: 10px 8px;
-  font-size: 12px;
+  padding: 8px 6px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.tab-icon{ font-size: 20px; line-height: 1; }
+.tab-label{ font-size: 11px; line-height: 1; }
+.btn.ghost{
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 @media (min-width: 900px){

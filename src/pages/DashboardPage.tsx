@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../app/AppContext';
 import { BudgetItem, Tx } from '../domain/models';
 import { addMonthsUTC, makeUTCDate, parseYMD, ymd } from '../domain/date';
@@ -261,7 +262,8 @@ export function DashboardPage() {
             <button className="btn" onClick={() => setMonthCursor(p => addMonthsUTC(p, 1))}>▶</button>
           </div>
           <div className="row">
-            <button className="btn primary" onClick={() => setBulkOpen(true)}>거래 내역 추가</button>
+            <button className="btn primary" onClick={() => setBulkOpen(true)}>거래 추가</button>
+            <Link to="/analytics" className="btn" style={{ textDecoration: 'none' }}>📊 통계</Link>
           </div>
         </div>
 
@@ -628,14 +630,93 @@ export function DashboardPage() {
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>최근 거래(월)</h2>
           <div className="row">
-            <button className="btn" onClick={() => setAllOpen(true)}>전체 내역</button>
-            <button className="btn danger" onClick={deleteChecked} disabled={checked.size === 0}>선택 삭제</button>
+            {isMobile ? (
+              <Link to="/transactions" className="btn" style={{ textDecoration: 'none' }}>전체 거래내역 →</Link>
+            ) : (
+              <button className="btn" onClick={() => setAllOpen(true)}>전체 내역</button>
+            )}
+            {checked.size > 0 && (
+              <button className="btn danger" onClick={deleteChecked}>선택 삭제 ({checked.size})</button>
+            )}
           </div>
         </div>
 
         <div className="divider" />
 
-        {recentTx.length === 0 ? <p className="muted">거래가 없어.</p> : (
+        {recentTx.length === 0 ? <p className="muted">거래가 없어.</p> : isMobile ? (
+          /* ── 모바일: 카드 리스트 ── */
+          <div className="txcard-list">
+            {recentTx.map(t => {
+              const card = app.cards.find(c => c.id === t.cardId);
+              const isEditing = !!editing[t.id];
+              const d = editing[t.id];
+              return (
+                <div key={t.id} className="txcard">
+                  <div className="txrow" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                        <span className="catIcon" aria-hidden>{iconForCategoryPath(t.category)}</span>
+                        {t.category}
+                      </div>
+                      <div className="muted small" style={{ marginTop: 3 }}>
+                        {card?.name ?? '(삭제됨)'} · {t.date.slice(5)}
+                        {t.memo ? ` · ${t.memo}` : ''}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div
+                        className="mono"
+                        style={{
+                          fontSize: 17, fontWeight: 700,
+                          color: t.amount < 0 ? 'var(--good)' : 'var(--text)',
+                        }}
+                      >
+                        {t.amount < 0 ? '+' : ''}{fmt.format(Math.abs(t.amount))}원
+                      </div>
+                      {!isEditing && (
+                        <div className="row" style={{ gap: 6, marginTop: 6, justifyContent: 'flex-end' }}>
+                          <button className="btn" style={{ fontSize: 12, padding: '6px 10px' }} onClick={() => startEdit(t)}>편집</button>
+                          <button className="btn danger" style={{ fontSize: 12, padding: '6px 10px' }} onClick={async () => { if (!confirm('삭제할까?')) return; await app.deleteTx(t.id); }}>삭제</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {isEditing && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div className="form" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                        <label>결제수단
+                          <select value={d.cardId} onChange={e => setEditing(p => ({ ...p, [t.id]: { ...p[t.id], cardId: e.target.value } }))}>
+                            {app.cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </label>
+                        <label>카테고리
+                          <select value={d.category} onChange={e => setEditing(p => ({ ...p, [t.id]: { ...p[t.id], category: e.target.value } }))}>
+                            {app.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                        <label>금액
+                          <input value={d.amount} inputMode="numeric" onChange={e => setEditing(p => ({ ...p, [t.id]: { ...p[t.id], amount: e.target.value } }))} />
+                        </label>
+                        <label>메모
+                          <input value={d.memo ?? ''} onChange={e => setEditing(p => ({ ...p, [t.id]: { ...p[t.id], memo: e.target.value } }))} />
+                        </label>
+                      </div>
+                      <div className="row" style={{ justifyContent: 'flex-end' }}>
+                        <button className="btn primary" onClick={() => saveEdit(t)}>저장</button>
+                        <button className="btn" onClick={() => cancelEdit(t.id)}>취소</button>
+                        <button className="btn danger" onClick={async () => { if (!confirm('삭제할까?')) return; await app.deleteTx(t.id); cancelEdit(t.id); }}>삭제</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <Link to="/transactions" className="btn" style={{ textDecoration: 'none', textAlign: 'center', display: 'block', marginTop: 4 }}>
+              전체 거래내역 보기 →
+            </Link>
+          </div>
+        ) : (
+          /* ── 데스크탑: 테이블 ── */
           <div className="table-scroll">
             <table>
               <thead>
