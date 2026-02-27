@@ -3,11 +3,108 @@ import { Link } from 'react-router-dom';
 import { useApp } from '../app/AppContext';
 import { parseYMD, addMonthsUTC } from '../domain/date';
 import { CATEGORIES, CATEGORY_MAP } from '../domain/categories';
+import { resolveColor, resolveIcon } from '../domain/categoryMeta';
 import { useIsMobile } from '../app/useMedia';
 
 const fmt = new Intl.NumberFormat('ko-KR');
 
 function monthLabel(y: number, m: number) { return `${y}.${String(m).padStart(2, '0')}`; }
+
+/* ──── Day-of-week Chart ──── */
+const DOW_LABELS = ['일', '월', '화', '수', '목', '금', '토'];
+
+function DayOfWeekChart({ data }: { data: { day: string; avg: number; total: number }[] }) {
+  const maxVal = Math.max(...data.map(d => d.avg), 1);
+  const vW = 560, vH = 220, padL = 30, padR = 16, padT = 20, padB = 44;
+  const chartW = vW - padL - padR, chartH = vH - padT - padB;
+  const barW = Math.min(chartW / 7 * 0.55, 48);
+  const groupW = chartW / 7;
+  const maxDay = data.reduce((a, b) => b.avg > a.avg ? b : a, data[0])?.day ?? '';
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${vW} ${vH}`} style={{ width: '100%', maxWidth: 560, height: 'auto', display: 'block' }}>
+        {[0, 0.5, 1].map(p => {
+          const y = padT + chartH * (1 - p);
+          return <line key={p} x1={padL} y1={y} x2={vW - padR} y2={y} stroke="rgba(255,255,255,.07)" strokeWidth="1" />;
+        })}
+        {data.map((d, i) => {
+          const cx = padL + (i + 0.5) * groupW;
+          const h = Math.max((d.avg / maxVal) * chartH, 2);
+          const isMax = d.day === maxDay;
+          return (
+            <g key={i}>
+              <rect x={cx - barW / 2} y={padT + chartH - h} width={barW} height={h}
+                fill={isMax ? '#f87171' : 'rgba(96,165,250,.60)'} rx="5" opacity="0.9">
+                <title>{d.day}요일: 평균 {fmt.format(d.avg)}원 ({d.total > 0 ? `합계 ${fmt.format(d.total)}원` : '데이터 없음'})</title>
+              </rect>
+              <text x={cx} y={vH - padB + 18} textAnchor="middle" fill="rgba(255,255,255,.60)" fontSize="13" fontFamily="monospace">{d.day}</text>
+              {d.avg > 0 && (
+                <text x={cx} y={padT + chartH - h - 5} textAnchor="middle" fill="rgba(255,255,255,.45)" fontSize="10" fontFamily="monospace">
+                  {(d.avg / 10000).toFixed(0)}만
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {maxDay && <div className="muted small" style={{ marginTop: 6 }}>가장 많이 지출하는 요일: <strong style={{ color: '#f87171' }}>{maxDay}요일</strong></div>}
+    </div>
+  );
+}
+
+/* ──── Spending Heatmap ──── */
+function SpendingHeatmap({ year, month, dayExpense }: { year: number; month: number; dayExpense: Map<string, number> }) {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const maxExp = Math.max(...Array.from(dayExpense.values()), 1);
+
+  function heatColor(exp: number): string {
+    if (exp === 0) return 'rgba(255,255,255,.04)';
+    const ratio = exp / maxExp;
+    if (ratio < 0.25) return 'rgba(96,165,250,.25)';
+    if (ratio < 0.5)  return 'rgba(96,165,250,.50)';
+    if (ratio < 0.75) return 'rgba(251,146,60,.60)';
+    return 'rgba(248,113,113,.80)';
+  }
+
+  const cells: React.ReactNode[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(<div key={'e' + i} className="heatmap-cell" style={{ background: 'transparent' }} />);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const exp = dayExpense.get(dateStr) ?? 0;
+    cells.push(
+      <div key={d} className="heatmap-cell" style={{ background: heatColor(exp) }} title={`${d}일: ${fmt.format(exp)}원`}>
+        {d}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, marginBottom: 6 }}>
+        {DOW_LABELS.map(d => <div key={d} style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', padding: '2px 0' }}>{d}</div>)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
+        {cells}
+      </div>
+      <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+        {[
+          { label: '없음', color: 'rgba(255,255,255,.04)' },
+          { label: '적음', color: 'rgba(96,165,250,.25)' },
+          { label: '보통', color: 'rgba(96,165,250,.50)' },
+          { label: '많음', color: 'rgba(251,146,60,.60)' },
+          { label: '매우 많음', color: 'rgba(248,113,113,.80)' },
+        ].map(({ label, color }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 14, height: 14, borderRadius: 4, background: color, border: '1px solid var(--line)' }} />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /* ──── SVG Bar Chart ──── */
 function BarChart({ data }: { data: { label: string; income: number; expense: number }[] }) {
@@ -142,6 +239,7 @@ function DonutChart({ items }: { items: { name: string; amount: number; color: s
 /* ──── Main Page ──── */
 export function AnalyticsPage() {
   const app = useApp();
+  const meta = app.categoryMeta;
   const isMobile = useIsMobile(520);
   const now = new Date();
   const [yearCursor, setYearCursor] = useState(now.getUTCFullYear());
@@ -198,10 +296,12 @@ export function AnalyticsPage() {
     const map = new Map<string, number>();
     for (const m of monthlyData) { for (const [cat, amt] of m.byCategory) map.set(cat, (map.get(cat) ?? 0) + amt); }
     return Array.from(map.entries()).map(([name, amount]) => {
+      // name은 catDef.name (leaf)이므로 fullPath를 역으로 찾아야 함
       const catDef = CATEGORIES.find(c => c.name === name);
-      return { name, amount, color: catDef?.colorCode ?? '#777' };
+      const color = catDef ? resolveColor(catDef.fullPath, meta) : '#777';
+      return { name, amount, color };
     }).sort((a, b) => b.amount - a.amount);
-  }, [monthlyData]);
+  }, [monthlyData, meta]);
 
   const [selectedMonth, setSelectedMonth] = useState(now.getUTCMonth() + 1);
   const monthCatBreakdown = useMemo(() => {
@@ -209,9 +309,10 @@ export function AnalyticsPage() {
     if (!m) return [];
     return Array.from(m.byCategory.entries()).map(([name, amount]) => {
       const catDef = CATEGORIES.find(c => c.name === name);
-      return { name, amount, color: catDef?.colorCode ?? '#777' };
+      const color = catDef ? resolveColor(catDef.fullPath, meta) : '#777';
+      return { name, amount, color };
     }).sort((a, b) => b.amount - a.amount);
-  }, [monthlyData, yearCursor, selectedMonth]);
+  }, [monthlyData, yearCursor, selectedMonth, meta]);
 
   const topCategories = useMemo(() => {
     const map = new Map<string, { total: number; count: number; months: Set<string> }>();
@@ -236,6 +337,91 @@ export function AnalyticsPage() {
       category: cat, ...r, avgMonth: r.months.size ? Math.round(r.total / r.months.size) : r.total
     })).sort((a, b) => b.total - a.total).slice(0, 15);
   }, [app.tx, app.cards, startYm, endYm]);
+
+  // 요일별 지출 패턴 (전체 기간)
+  const dowData = useMemo(() => {
+    const byDow: { total: number; count: number }[] = Array.from({ length: 7 }, () => ({ total: 0, count: 0 }));
+    for (const t of app.tx) {
+      if (t.amount <= 0) continue;
+      const dt = parseYMD(t.date);
+      if (!dt) continue;
+      const ty = dt.getUTCFullYear(), tm = dt.getUTCMonth() + 1;
+      const tYm = ty * 100 + tm, sYm = startYm.y * 100 + startYm.m, eYm = endYm.y * 100 + endYm.m;
+      if (tYm < sYm || tYm > eYm) continue;
+      const card = app.cards.find(c => c.id === t.cardId);
+      if (card?.type === 'transfer_nonspend') continue;
+      if (t.category.startsWith('이체/비지출')) continue;
+      const dow = dt.getUTCDay(); // 0=일
+      byDow[dow].total += t.amount;
+      byDow[dow].count += 1;
+    }
+    return DOW_LABELS.map((label, i) => {
+      const { total, count } = byDow[i];
+      return { day: label, total, avg: count > 0 ? Math.round(total / count) : 0 };
+    });
+  }, [app.tx, app.cards, startYm, endYm]);
+
+  // 월별 일별 지출 히트맵 (선택 월)
+  const [heatmapMonth, setHeatmapMonth] = useState(now.getUTCMonth() + 1);
+  const [heatmapYear, setHeatmapYear] = useState(now.getUTCFullYear());
+  const heatmapDayExpense = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of app.tx) {
+      if (t.amount <= 0) continue;
+      const dt = parseYMD(t.date);
+      if (!dt) continue;
+      if (dt.getUTCFullYear() !== heatmapYear || (dt.getUTCMonth() + 1) !== heatmapMonth) continue;
+      if (t.category.startsWith('이체/비지출')) continue;
+      const card = app.cards.find(c => c.id === t.cardId);
+      if (card?.type === 'transfer_nonspend') continue;
+      map.set(t.date, (map.get(t.date) ?? 0) + t.amount);
+    }
+    return map;
+  }, [app.tx, app.cards, heatmapYear, heatmapMonth]);
+
+  // 고정 지출 감지 (3개월 이상 동일 카테고리 반복)
+  const recurringExpenses = useMemo(() => {
+    const catMonths = new Map<string, { months: Set<string>; total: number; amounts: number[] }>();
+    for (const t of app.tx) {
+      if (t.amount <= 0) continue;
+      const dt = parseYMD(t.date);
+      if (!dt) continue;
+      if (t.category.startsWith('이체/비지출')) continue;
+      const card = app.cards.find(c => c.id === t.cardId);
+      if (card?.type === 'transfer_nonspend') continue;
+      const monthKey = `${dt.getUTCFullYear()}-${dt.getUTCMonth()}`;
+      const rec = catMonths.get(t.category) ?? { months: new Set(), total: 0, amounts: [] };
+      rec.months.add(monthKey);
+      rec.total += t.amount;
+      rec.amounts.push(t.amount);
+      catMonths.set(t.category, rec);
+    }
+    return Array.from(catMonths.entries())
+      .filter(([, r]) => r.months.size >= 3)
+      .map(([cat, r]) => ({
+        category: cat,
+        icon: resolveIcon(cat, meta),
+        monthCount: r.months.size,
+        avgAmount: Math.round(r.total / r.months.size),
+        lastAmount: r.amounts[r.amounts.length - 1],
+      }))
+      .sort((a, b) => b.avgAmount - a.avgAmount);
+  }, [app.tx, app.cards, meta]);
+
+  // 인사이트: 이번 달 vs 지난달
+  const insightData = useMemo(() => {
+    const thisM = monthlyData.find(m => m.y === now.getUTCFullYear() && m.m === (now.getUTCMonth() + 1));
+    const lastM = monthlyData.find(m => {
+      const prev = addMonthsUTC({ y: now.getUTCFullYear(), m: now.getUTCMonth() + 1 }, -1);
+      return m.y === prev.y && m.m === prev.m;
+    });
+    const topCat = topCategories[0];
+    const budgetTotal = (app.settings?.budgetItems ?? []).reduce((s, it) => s + (it.monthCap || 0), 0);
+    const thisExpense = thisM?.expense ?? 0;
+    const lastExpense = lastM?.expense ?? 0;
+    const pct = lastExpense > 0 ? Math.round(((thisExpense - lastExpense) / lastExpense) * 100) : null;
+    return { thisExpense, lastExpense, pct, topCat, budgetTotal, budgetRemain: budgetTotal - thisExpense };
+  }, [monthlyData, topCategories, app.settings]);
 
   const rangeLabel = customRange
     ? `${customRange.fromY}.${String(customRange.fromM).padStart(2, '0')} ~ ${customRange.toY}.${String(customRange.toM).padStart(2, '0')}`
@@ -280,6 +466,37 @@ export function AnalyticsPage() {
             </div>
           </div>
         )}
+
+        <div className="divider" />
+
+        {/* ── 인사이트 카드 ── */}
+        <div className="insight-row">
+          <div className="insight-card">
+            <div className="ic-label">이번 달 지출</div>
+            <div className="ic-value">{(insightData.thisExpense / 10000).toFixed(0)}만원</div>
+            {insightData.pct !== null && (
+              <div className="ic-sub" style={{ color: insightData.pct > 0 ? 'var(--bad)' : 'var(--good)' }}>
+                {insightData.pct > 0 ? `↑ ${insightData.pct}%` : `↓ ${Math.abs(insightData.pct)}%`} vs 지난달
+              </div>
+            )}
+          </div>
+          {insightData.topCat && (
+            <div className="insight-card">
+              <div className="ic-label">최다 지출 카테고리</div>
+              <div className="ic-value" style={{ fontSize: 15 }}>{insightData.topCat.category}</div>
+              <div className="ic-sub">{fmt.format(insightData.topCat.total)}원</div>
+            </div>
+          )}
+          {insightData.budgetTotal > 0 && (
+            <div className="insight-card">
+              <div className="ic-label">예산 잔여</div>
+              <div className="ic-value" style={{ color: insightData.budgetRemain >= 0 ? 'var(--good)' : 'var(--bad)' }}>
+                {insightData.budgetRemain >= 0 ? '+' : ''}{(insightData.budgetRemain / 10000).toFixed(0)}만원
+              </div>
+              <div className="ic-sub">{insightData.budgetRemain >= 0 ? '예산 내 지출 중' : '예산 초과!'}</div>
+            </div>
+          )}
+        </div>
 
         <div className="divider" />
 
@@ -373,6 +590,71 @@ export function AnalyticsPage() {
             </table>
           </div>
         )}
+
+        {/* ── 요일별 지출 패턴 ── */}
+        <div className="divider" />
+        <h2 style={{ marginTop: 0 }}>📅 요일별 지출 패턴</h2>
+        <DayOfWeekChart data={dowData} />
+
+        {/* ── 일별 지출 히트맵 ── */}
+        <div className="divider" />
+        <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <h2 style={{ margin: 0 }}>🗓️ 일별 지출 달력</h2>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn" onClick={() => {
+              const d = new Date(Date.UTC(heatmapYear, heatmapMonth - 2, 1));
+              setHeatmapYear(d.getUTCFullYear()); setHeatmapMonth(d.getUTCMonth() + 1);
+            }}>◀</button>
+            <div className="mono" style={{ padding: '0 8px', fontSize: 16 }}>{heatmapYear}년 {heatmapMonth}월</div>
+            <button className="btn" onClick={() => {
+              const d = new Date(Date.UTC(heatmapYear, heatmapMonth, 1));
+              setHeatmapYear(d.getUTCFullYear()); setHeatmapMonth(d.getUTCMonth() + 1);
+            }}>▶</button>
+          </div>
+        </div>
+        <SpendingHeatmap year={heatmapYear} month={heatmapMonth} dayExpense={heatmapDayExpense} />
+
+        {/* ── 고정 지출 감지 ── */}
+        {recurringExpenses.length > 0 && <>
+          <div className="divider" />
+          <h2 style={{ marginTop: 0 }}>🔁 고정 지출로 보이는 항목</h2>
+          <div className="muted small" style={{ marginBottom: 10 }}>3개월 이상 반복 지출된 카테고리야.</div>
+          {isMobile ? (
+            <div className="txcard-list">
+              {recurringExpenses.slice(0, 10).map(r => (
+                <div key={r.category} className="txcard">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}><span className="catIcon">{r.icon}</span>{r.category}</div>
+                      <div className="muted small">{r.monthCount}개월 반복</div>
+                    </div>
+                    <div className="right">
+                      <div className="mono" style={{ fontWeight: 700 }}>월평균 {fmt.format(r.avgAmount)}원</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="table-scroll">
+              <table className="tight-table">
+                <thead><tr>
+                  <th>카테고리</th><th className="right">반복 개월</th><th className="right">월평균</th><th className="right">최근 금액</th>
+                </tr></thead>
+                <tbody>
+                  {recurringExpenses.slice(0, 15).map(r => (
+                    <tr key={r.category}>
+                      <td><span className="catIcon">{r.icon}</span>{r.category}</td>
+                      <td className="right mono">{r.monthCount}개월</td>
+                      <td className="right mono">{fmt.format(r.avgAmount)}원</td>
+                      <td className="right mono">{fmt.format(r.lastAmount)}원</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>}
       </div>
     </div>
   );

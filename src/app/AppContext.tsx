@@ -51,6 +51,9 @@ type AppCtx = {
 
   exportTxsCsv: () => void;
   exportTxsTemplate: () => void;
+
+  categoryMeta: Record<string, { icon: string; color: string }>;
+  updateCategoryMeta: (path: string, icon: string, color: string) => Promise<void>;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -247,6 +250,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     download('transactions_template.csv', blob);
   }, [cards, categories]);
 
+  const categoryMeta = useMemo(
+    () => (settings?.categoryMeta ?? {}),
+    [settings]
+  );
+
+  const updateCategoryMeta = useCallback(async (path: string, icon: string, color: string) => {
+    if (!settings) return;
+    const next: AppSettings = {
+      ...settings,
+      categoryMeta: { ...(settings.categoryMeta ?? {}), [path]: { icon, color } },
+    };
+    await updateSettings(next);
+  }, [settings, updateSettings]);
+
   const value = useMemo<AppCtx>(() => ({
     isUnlocked,
     isInitialized,
@@ -280,11 +297,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     importBackup,
     exportTxsCsv,
     exportTxsTemplate,
+    categoryMeta,
+    updateCategoryMeta,
   }), [isUnlocked, isInitialized, error, initWallet, unlockWallet, lock, settings, cards, cardVersions, tx, statements, loans, categories,
       cardActions.upsertCard, cardActions.deleteCard, cardActions.upsertCardVersion, cardActions.deleteCardVersion,
       txActions.upsertTx, txActions.deleteTx, upsertStatement, deleteStatement,
       loanActions.upsertLoan, loanActions.deleteLoan, upsertCategory, deleteCategory,
-      updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup, exportTxsCsv, exportTxsTemplate]);
+      updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup, exportTxsCsv, exportTxsTemplate,
+      categoryMeta, updateCategoryMeta]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

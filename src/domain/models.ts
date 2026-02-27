@@ -120,6 +120,8 @@ export type AppSettings = {
   budgetBuckets?: Record<string, number>;
   // 카테고리 -> 예산 항목(id) 매핑(미분류 처리용)
   categoryBudgetMap: Record<string, string>;
+  // 카테고리별 아이콘/색상 유저 오버라이드 (keyed by fullPath)
+  categoryMeta?: Record<string, { icon: string; color: string }>;
 };
 
 export type BackupFileV1 = {
