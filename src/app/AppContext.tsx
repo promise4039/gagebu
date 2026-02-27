@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppSettings, Card, CardVersion, Statement, Tx, Loan } from '../domain/models';
+import { AppSettings, CategoryMetaEntry, Card, CardVersion, Statement, Tx, Loan } from '../domain/models';
+import { DEFAULT_CATEGORIES } from '../domain/categories';
 import * as store from '../storage/secureStore';
 import { exportTxsToCsv, exportTemplateCsv } from '../storage/csvTransform';
 import { useLockState } from './useLockState';
@@ -52,8 +53,11 @@ type AppCtx = {
   exportTxsCsv: () => void;
   exportTxsTemplate: () => void;
 
-  categoryMeta: Record<string, { icon: string; color: string }>;
-  updateCategoryMeta: (path: string, icon: string, color: string) => Promise<void>;
+  // 활성 카테고리 목록 (settings.categoryPaths ?? DEFAULT_CATEGORIES)
+  effectiveCategories: string[];
+  categoryMeta: Record<string, CategoryMetaEntry>;
+  updateCategoryMeta: (path: string, meta: Partial<CategoryMetaEntry>) => Promise<void>;
+  saveCategoryPaths: (paths: string[]) => Promise<void>;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -250,17 +254,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     download('transactions_template.csv', blob);
   }, [cards, categories]);
 
-  const categoryMeta = useMemo(
-    () => (settings?.categoryMeta ?? {}),
+  const effectiveCategories = useMemo(
+    () => settings?.categoryPaths ?? DEFAULT_CATEGORIES,
     [settings]
   );
 
-  const updateCategoryMeta = useCallback(async (path: string, icon: string, color: string) => {
+  const categoryMeta = useMemo(
+    () => (settings?.categoryMeta ?? {}) as Record<string, CategoryMetaEntry>,
+    [settings]
+  );
+
+  const updateCategoryMeta = useCallback(async (path: string, meta: Partial<CategoryMetaEntry>) => {
     if (!settings) return;
+    const existing = settings.categoryMeta?.[path] ?? { icon: '', color: '' };
     const next: AppSettings = {
       ...settings,
-      categoryMeta: { ...(settings.categoryMeta ?? {}), [path]: { icon, color } },
+      categoryMeta: { ...(settings.categoryMeta ?? {}), [path]: { ...existing, ...meta } },
     };
+    await updateSettings(next);
+  }, [settings, updateSettings]);
+
+  const saveCategoryPaths = useCallback(async (paths: string[]) => {
+    if (!settings) return;
+    const next: AppSettings = { ...settings, categoryPaths: paths };
     await updateSettings(next);
   }, [settings, updateSettings]);
 
@@ -297,14 +313,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     importBackup,
     exportTxsCsv,
     exportTxsTemplate,
+    effectiveCategories,
     categoryMeta,
     updateCategoryMeta,
+    saveCategoryPaths,
   }), [isUnlocked, isInitialized, error, initWallet, unlockWallet, lock, settings, cards, cardVersions, tx, statements, loans, categories,
       cardActions.upsertCard, cardActions.deleteCard, cardActions.upsertCardVersion, cardActions.deleteCardVersion,
       txActions.upsertTx, txActions.deleteTx, upsertStatement, deleteStatement,
       loanActions.upsertLoan, loanActions.deleteLoan, upsertCategory, deleteCategory,
       updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup, exportTxsCsv, exportTxsTemplate,
-      categoryMeta, updateCategoryMeta]);
+      effectiveCategories, categoryMeta, updateCategoryMeta, saveCategoryPaths]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

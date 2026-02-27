@@ -266,7 +266,8 @@ export function AnalyticsPage() {
       const dt = parseYMD(t.date);
       if (!dt) continue;
       const ty = dt.getUTCFullYear(), tm = dt.getUTCMonth() + 1;
-      if (t.category === 'transfer' && (t.tags ?? []).some(tag => ['비지출', '저축', '투자'].includes(tag))) continue;
+      if (t.excludeFromBudget) continue;
+      if (t.category.startsWith('이체/')) continue;
       const catNature = CATEGORY_MAP.get(t.category)?.nature;
       if (catNature === 'transfer') continue;
       const card = app.cards.find(c => c.id === t.cardId);
@@ -323,6 +324,8 @@ export function AnalyticsPage() {
       const tYm = ty * 100 + tm, sYm = startYm.y * 100 + startYm.m, eYm = endYm.y * 100 + endYm.m;
       if (tYm < sYm || tYm > eYm) continue;
       if (t.amount <= 0) continue;
+      if (t.excludeFromBudget) continue;
+      if (t.category.startsWith('이체/')) continue;
       const catNature2 = CATEGORY_MAP.get(t.category)?.nature;
       if (catNature2 === 'transfer') continue;
       const card = app.cards.find(c => c.id === t.cardId);

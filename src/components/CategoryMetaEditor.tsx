@@ -18,7 +18,7 @@ export function CategoryMetaEditor() {
     const d = getDraft(path);
     setSaving(path);
     try {
-      await app.updateCategoryMeta(path, d.icon.trim() || '📌', d.color || '#777');
+      await app.updateCategoryMeta(path, { icon: d.icon.trim() || '📌', color: d.color || '#777' });
       setDraft(prev => { const cp = { ...prev }; delete cp[path]; return cp; });
     } finally {
       setSaving(null);
