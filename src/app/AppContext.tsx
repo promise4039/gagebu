@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppSettings, Card, CardVersion, Statement, Tx, Loan } from '../domain/models';
 import * as store from '../storage/secureStore';
+import { exportTxsToCsv, exportTemplateCsv } from '../storage/csvTransform';
 
 type AppCtx = {
   isUnlocked: boolean;
@@ -43,6 +44,9 @@ type AppCtx = {
 
   exportBackup: () => Promise<void>;
   importBackup: (file: File) => Promise<void>;
+
+  exportTxsCsv: () => void;
+  exportTxsTemplate: () => void;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -348,6 +352,18 @@ const deleteCategory = useCallback(async (name: string) => {
     lock();
   }, [lock]);
 
+  const exportTxsCsv = useCallback(() => {
+    const csv = exportTxsToCsv(tx, cards, categories);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    download('transactions_' + new Date().toISOString().slice(0, 10) + '.csv', blob);
+  }, [tx, cards, categories]);
+
+  const exportTxsTemplate = useCallback(() => {
+    const csv = exportTemplateCsv(cards, categories);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    download('transactions_template.csv', blob);
+  }, [cards, categories]);
+
   const value = useMemo<AppCtx>(() => ({
     isUnlocked,
     isInitialized,
@@ -379,8 +395,10 @@ const deleteCategory = useCallback(async (name: string) => {
     updateSettings,
     exportBackup,
     importBackup,
+    exportTxsCsv,
+    exportTxsTemplate,
   }), [isUnlocked, isInitialized, error, initWallet, unlockWallet, lock, settings, cards, cardVersions, tx, statements, loans, categories,
-      upsertCard, deleteCard, upsertCardVersion, deleteCardVersion, upsertTx, deleteTx, upsertStatement, deleteStatement, upsertLoan, deleteLoan, upsertCategory, deleteCategory, updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup]);
+      upsertCard, deleteCard, upsertCardVersion, deleteCardVersion, upsertTx, deleteTx, upsertStatement, deleteStatement, upsertLoan, deleteLoan, upsertCategory, deleteCategory, updateSettings, categoryIdByPath, pathByCategoryId, exportBackup, importBackup, exportTxsCsv, exportTxsTemplate]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

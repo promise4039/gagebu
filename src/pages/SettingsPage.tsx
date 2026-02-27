@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { AppSettings } from '../domain/models';
+import { CsvImportModal } from '../components/CsvImportModal';
 
 export function SettingsPage() {
   const app = useApp();
@@ -12,6 +13,7 @@ export function SettingsPage() {
   const [autoLockMinutes, setAutoLockMinutes] = useState(String(s.autoLockMinutes));
 
   const [newCat, setNewCat] = useState('');
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
 
   async function saveBudgets() {
     const next: AppSettings = {
@@ -111,7 +113,29 @@ export function SettingsPage() {
             • 다른 기기에서 쓰려면: 백업 내보내기 → 파일 옮기기 → 잠금 화면에서 가져오기 → 같은 비밀번호로 잠금 해제.
           </div>
         </div>
+
+        <div className="card">
+          <h2>거래내역 CSV 가져오기/내보내기</h2>
+          <div className="notice" style={{ marginBottom: 12 }}>
+            • CSV 내보내기: 현재 거래 전체를 CSV 파일로 저장해. 엑셀/구글 시트에서 열기 가능.<br/>
+            • 빈 템플릿: 유효한 카드명·카테고리가 주석으로 포함된 빈 양식. 채워서 가져오기에 사용.<br/>
+            • CSV 가져오기: 작성한 CSV를 선택하면 유효성 검사 후 한 번에 적용돼.
+          </div>
+          <div className="row">
+            <button className="btn" onClick={() => app.exportTxsCsv()}>
+              거래 내보내기 (CSV)
+            </button>
+            <button className="btn" onClick={() => app.exportTxsTemplate()}>
+              빈 템플릿 다운로드
+            </button>
+            <button className="btn primary" onClick={() => setCsvImportOpen(true)}>
+              CSV 가져오기
+            </button>
+          </div>
+        </div>
       </div>
+
+      <CsvImportModal open={csvImportOpen} onClose={() => setCsvImportOpen(false)} />
     </div>
   );
 }

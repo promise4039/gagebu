@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApp } from '../app/AppContext';
 import { parseYMD, addMonthsUTC } from '../domain/date';
 import { CATEGORIES, CATEGORY_MAP } from '../domain/categories';
+import { useIsMobile } from '../app/useMedia';
 
 const fmt = new Intl.NumberFormat('ko-KR');
 
@@ -140,6 +142,7 @@ function DonutChart({ items }: { items: { name: string; amount: number; color: s
 /* ──── Main Page ──── */
 export function AnalyticsPage() {
   const app = useApp();
+  const isMobile = useIsMobile(520);
   const now = new Date();
   const [yearCursor, setYearCursor] = useState(now.getUTCFullYear());
   const [showRangePicker, setShowRangePicker] = useState(false);
@@ -243,7 +246,10 @@ export function AnalyticsPage() {
       <div className="card">
         {/* Header */}
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0 }}>📊 분석/통계</h2>
+          <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+            {isMobile && <Link to="/" className="btn" style={{ textDecoration: 'none', padding: '8px 10px' }}>← 홈</Link>}
+            <h2 style={{ margin: 0 }}>📊 분석/통계</h2>
+          </div>
           <div className="row" style={{ gap: 6 }}>
             <button className="btn" onClick={() => { setYearCursor(y => y - 1); setCustomRange(null); }}>◀</button>
             <div className="mono" style={{
@@ -325,7 +331,30 @@ export function AnalyticsPage() {
 
         <div className="divider" />
         <h2 style={{ marginTop: 0 }}>🏆 카테고리별 상세 (Top 15)</h2>
-        {topCategories.length === 0 ? <p className="muted">데이터 없음</p> : (
+        {topCategories.length === 0 ? <p className="muted">데이터 없음</p> : isMobile ? (
+          <div className="txcard-list">
+            {topCategories.map((c, idx) => {
+              const pct = totals.expense > 0 ? ((c.total / totals.expense) * 100).toFixed(1) : '0';
+              return (
+                <div key={c.category} className="txcard">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>
+                        <span className="muted small" style={{ marginRight: 6 }}>#{idx + 1}</span>
+                        {c.category}
+                      </div>
+                      <div className="muted small" style={{ marginTop: 3 }}>{c.count}건 · 월평균 {fmt.format(c.avgMonth)}원</div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{fmt.format(c.total)}원</div>
+                      <span className="pill mono" style={{ marginTop: 4, display: 'inline-block' }}>{pct}%</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
           <div className="table-scroll">
             <table className="tight-table">
               <thead><tr>
