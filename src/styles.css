@@ -334,3 +334,37 @@ tr:last-child td{border-bottom:none}
   line-height: 26px;
   font-size: 18px;
 }
+
+
+/* ---------- Mobile (iPhone-first) ---------- */
+.catIcon{display:inline-flex;align-items:center;justify-content:center;width:1.6em;min-width:1.6em;line-height:1;margin-right:6px}
+.swipe-row{display:flex;gap:12px;align-items:stretch}
+.kpi-card,.budget-card{min-width:0}
+.dots{display:flex;gap:6px;margin-top:6px;align-items:center}
+.dot{width:8px;height:8px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.08)}
+.dot.inc{background:rgba(43,213,118,.70);border-color:rgba(43,213,118,.45)}
+.dot.exp{background:rgba(255,91,106,.70);border-color:rgba(255,91,106,.45)}
+.txcard-list{display:flex;flex-direction:column;gap:12px}
+.txcard{border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:rgba(255,255,255,.03)}
+.txrow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start}
+.txactions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:8px}
+.table-scroll{-webkit-overflow-scrolling:touch}
+@media (max-width: 520px){
+  .container{padding:12px}
+  .header-inner{padding:12px 12px}
+  .card{padding:12px}
+  .swipe-row{overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:6px}
+  .swipe-row .kpi-card,.swipe-row .budget-card{min-width:280px;scroll-snap-align:start}
+  .calendar{gap:5px}
+  .cal-cell{padding:6px;min-height:46px}
+  .cal-cell .mini{display:none}
+  /* iOS input zoom prevention */
+  input,select,textarea{font-size:16px}
+  /* Modal as full-screen sheet (better on iPhone) */
+  .modal{padding:0;align-items:stretch}
+  .panel{width:100vw;max-height:100vh;height:100vh;border-radius:0;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+  .panel.xl{width:100vw;height:100vh;border-radius:0}
+  /* Bottom tab bar safe area */
+  .bottom-nav{padding-bottom:env(safe-area-inset-bottom)}
+  .app-body{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
+}

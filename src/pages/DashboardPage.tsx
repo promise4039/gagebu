@@ -5,8 +5,34 @@ import { addMonthsUTC, makeUTCDate, parseYMD, ymd } from '../domain/date';
 import { BulkEntryModal } from '../components/BulkEntryModal';
 import { TransactionsManagerModal } from '../components/TransactionsManagerModal';
 import { APP_VERSION } from '../app/version';
+import { useIsMobile } from '../app/useMedia';
 
 const fmt = new Intl.NumberFormat('ko-KR');
+
+function iconForBudgetItem(kind: BudgetItem['kind']): string {
+  switch (kind) {
+    case 'fuel': return '⛽️';
+    case 'grocery': return '🛒';
+    case 'food': return '🍽️';
+    case 'online': return '🛍️';
+    case 'transfer': return '🔁';
+    case 'life': return '🏠';
+    case 'custom': return '🧩';
+    default: return '📌';
+  }
+}
+
+function iconForCategoryPath(path: string): string {
+  const g = (path || '').split('/')[0];
+  const map: Record<string, string> = {
+    '수입': '💰', '식비': '🍽️', '마트': '🛒', '교통': '🚗', '주거': '🏠', '통신': '📱',
+    '의료': '🏥', '보험': '🏦', '세금': '🧾', '교육': '📚', '여가': '🎮', '경조': '🎁',
+    '미용': '💇', '여행': '✈️', '수수료': '🧾', '이월': '💳', '포인트': '⭐', '해외': '🌍',
+    '조정': '🧩', '이체': '🔁',
+  };
+  return map[g] ?? '📌';
+}
+
 
 function kindForCategory(category: string): BudgetItem['kind'] | null {
   if (category.startsWith('교통/주유')) return 'fuel';
@@ -43,6 +69,7 @@ function kpiFromTx(arr: Tx[]) {
 export function DashboardPage() {
   const app = useApp();
   const settings = app.settings!;
+  const isMobile = useIsMobile(520);
   const now = new Date();
 
   const [monthCursor, setMonthCursor] = useState<{ y: number; m: number }>({ y: now.getUTCFullYear(), m: now.getUTCMonth() + 1 });
@@ -131,6 +158,7 @@ export function DashboardPage() {
     }
     return map;
   }, [monthTx]);
+  const selectedAgg = dayAgg.get(selectedDay) ?? null;
 
   const actual = useMemo(() => {
   const primaryByKind = new Map<BudgetItem['kind'], string>();
@@ -248,23 +276,52 @@ export function DashboardPage() {
             const agg = dayAgg.get(c.ymd);
             const cls = 'cal-cell' + (c.inMonth ? '' : ' muted') + (c.ymd === selectedDay ? ' selected' : '');
             return (
-              <div key={idx} className={cls} style={{ minHeight: 78 }} onClick={() => setSelectedDay(c.ymd)} title={c.ymd}>
+              <div key={idx} className={cls} style={{ minHeight: isMobile ? 52 : 78 }} onClick={() => setSelectedDay(c.ymd)} title={c.ymd}>
                 <div className="num mono">{c.day}</div>
                 {agg && (agg.incN + agg.expN) > 0 ? (
-                <div className="mini">
-                  {agg.incN > 0 ? <div className="inc">수입 {fmt.format(agg.inc)}원 · {agg.incN}건</div> : null}
-                  {agg.expN > 0 ? <div className="exp">지출 {fmt.format(agg.exp)}원 · {agg.expN}건</div> : null}
-                </div>
-              ) : null}
+                  isMobile ? (
+                    <div className="dots" aria-label="요약">
+                      {agg.incN > 0 ? <span className="dot inc" title={`수입 ${fmt.format(agg.inc)}원 · ${agg.incN}건`} /> : null}
+                      {agg.expN > 0 ? <span className="dot exp" title={`지출 ${fmt.format(agg.exp)}원 · ${agg.expN}건`} /> : null}
+                    </div>
+                  ) : (
+                    <div className="mini">
+                      {agg.incN > 0 ? <div className="inc">수입 {fmt.format(agg.inc)}원 · {agg.incN}건</div> : null}
+                      {agg.expN > 0 ? <div className="exp">지출 {fmt.format(agg.exp)}원 · {agg.expN}건</div> : null}
+                    </div>
+                  )
+                ) : null}
               </div>
             );
           })}
         </div>
 
+        {isMobile ? (
+          <div className="card" style={{ boxShadow: 'none', marginTop: 10 }}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <div className="muted small">선택일</div>
+              <div className="mono">{selectedDay}</div>
+            </div>
+            <div className="divider" />
+            <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="card" style={{ boxShadow: 'none', background: 'rgba(20,60,35,.22)' }}>
+                <div className="muted small">수입</div>
+                <div className="mono" style={{ fontSize: 18 }}>{fmt.format(selectedAgg ? selectedAgg.inc : 0)}원</div>
+                <div className="muted small">({selectedAgg ? selectedAgg.incN : 0}건)</div>
+              </div>
+              <div className="card" style={{ boxShadow: 'none', background: 'rgba(70,30,30,.22)' }}>
+                <div className="muted small">지출</div>
+                <div className="mono" style={{ fontSize: 18 }}>{fmt.format(selectedAgg ? selectedAgg.exp : 0)}원</div>
+                <div className="muted small">({selectedAgg ? selectedAgg.expN : 0}건)</div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="divider" />
 
-        <div className="two-col">
-          <div className="card" style={{ boxShadow: 'none' }}>
+        <div className={isMobile ? "swipe-row" : "two-col"}>
+          <div className="card kpi-card" style={{ boxShadow: 'none' }}>
             <div className="pill mono">월간</div>
             <div className="divider" />
             <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -283,7 +340,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <div className="card" style={{ boxShadow: 'none' }}>
+          <div className="card kpi-card" style={{ boxShadow: 'none' }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <div className="pill mono">연간</div>
               <div className="row">
@@ -312,8 +369,8 @@ export function DashboardPage() {
 
         <div className="divider" />
 
-        <div className="two-col">
-          <div className="card" style={{ boxShadow: 'none' }}>
+        <div className={isMobile ? "swipe-row" : "two-col"}>
+          <div className="card budget-card" style={{ boxShadow: 'none' }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 style={{ margin: 0 }}>예산대비 현황(월)</h2>
               <div className="mono">{fmt.format(monthKpi.expense)}원 / {fmt.format(monthBudgetTotal)}원</div>
@@ -405,7 +462,7 @@ export function DashboardPage() {
                   <div key={it.id} className="budgetbar">
                     <div className={'fill ' + (cls === 'bad' ? 'bad' : cls === 'warn' ? 'warn' : '')} style={{ width: w + '%' }} />
                     <div className="content">
-                      <div className="left">{it.name}</div>
+                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind)}</span>{it.name}</div>
                       <div className="right">
                         <div className="top">{fmt.format(act)} / {fmt.format(bud)}원</div>
                         <div className="bottom">소진율 {pct}%</div>
@@ -432,7 +489,7 @@ export function DashboardPage() {
                   <tbody>
                     {Array.from(actual.monthUnmapped.entries()).sort((a,b)=>b[1]-a[1]).map(([k,v]) => (
                       <tr key={k}>
-                        <td>{k}</td>
+                        <td><span className="catIcon" aria-hidden>{iconForCategoryPath(k)}</span>{k}</td>
                         <td className="right mono">{fmt.format(v)}원</td>
                         <td>
                           {editItems.length === 0 ? (
@@ -491,7 +548,7 @@ export function DashboardPage() {
             )}
           </div>
 
-          <div className="card" style={{ boxShadow: 'none' }}>
+          <div className="card budget-card" style={{ boxShadow: 'none' }}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <h2 style={{ margin: 0 }}>예산대비 현황({yearCursor}년)</h2>
               <div className="mono">{fmt.format(yearKpi.expense)}원 / {fmt.format(yearBudgetTotal)}원</div>
@@ -512,7 +569,7 @@ export function DashboardPage() {
                   <div key={it.id} className="budgetbar">
                     <div className={'fill ' + (cls === 'bad' ? 'bad' : cls === 'warn' ? 'warn' : '')} style={{ width: w + '%' }} />
                     <div className="content">
-                      <div className="left">{it.name}</div>
+                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind)}</span>{it.name}</div>
                       <div className="right">
                         <div className="top">{fmt.format(act)} / {fmt.format(bud)}원</div>
                         <div className="bottom">소진율 {pct}%</div>
@@ -539,7 +596,7 @@ export function DashboardPage() {
                   <tbody>
                     {Array.from(actual.yearUnmapped.entries()).sort((a,b)=>b[1]-a[1]).map(([k,v]) => (
                       <tr key={k}>
-                        <td>{k}</td>
+                        <td><span className="catIcon" aria-hidden>{iconForCategoryPath(k)}</span>{k}</td>
                         <td className="right mono">{fmt.format(v)}원</td>
                         <td>
                           {editItems.length === 0 ? (
