@@ -26,10 +26,12 @@ function iconForBudgetItem(kind: BudgetItem['kind']): string {
 function iconForCategoryPath(path: string): string {
   const g = (path || '').split('/')[0];
   const map: Record<string, string> = {
-    '수입': '💰', '식비': '🍽️', '마트': '🛒', '교통': '🚗', '주거': '🏠', '통신': '📱',
-    '의료': '🏥', '보험': '🏦', '세금': '🧾', '교육': '📚', '여가': '🎮', '경조': '🎁',
-    '미용': '💇', '여행': '✈️', '수수료': '🧾', '이월': '💳', '포인트': '⭐', '해외': '🌍',
-    '조정': '🧩', '이체': '🔁',
+    '수입': '💰', '식비': '🍽️', '카페': '☕', '유흥': '🍺', '마트': '🏪', '쇼핑': '🛍️',
+    '교통': '🚗', '주거': '🏠', '통신': '📱', '의료': '💊', '교육': '📚', '문화': '🎭',
+    '여행': '✈️', '금융': '💳', '육아': '👶', '미용': '💄', '경조사': '🎁', '기타': '📌',
+    '이체': '🔁',
+    // 레거시 fallback
+    '생활': '🏠', '여가': '🎮', '경조': '🎁',
   };
   return map[g] ?? '📌';
 }
@@ -38,9 +40,9 @@ function iconForCategoryPath(path: string): string {
 function kindForCategory(category: string): BudgetItem['kind'] | null {
   if (category.startsWith('교통/주유')) return 'fuel';
   if (category.startsWith('마트/')) return 'grocery';
-  if (category.startsWith('식비/')) return 'food';
+  if (category.startsWith('식비/') || category.startsWith('카페/') || category.startsWith('유흥/')) return 'food';
   if (category.startsWith('쇼핑/')) return 'online';
-  if (category.startsWith('생활/')) return 'life';
+  if (category.startsWith('주거/') || category.startsWith('생활/')) return 'life';
   if (category.startsWith('이체/')) return 'transfer';
   return null;
 }
@@ -149,6 +151,7 @@ export function DashboardPage() {
       if (dt.getUTCFullYear() !== monthCursor.y) return false;
       if ((dt.getUTCMonth() + 1) !== monthCursor.m) return false;
       if (t.category.startsWith('이체/비지출')) return false;
+      if (t.excludeFromBudget) return false;
       const card = app.cards.find(c => c.id === t.cardId);
       if (card?.type === 'transfer_nonspend') return false;
       return true;
@@ -161,6 +164,7 @@ export function DashboardPage() {
       if (!dt) return false;
       if (dt.getUTCFullYear() !== yearCursor) return false;
       if (t.category.startsWith('이체/비지출')) return false;
+      if (t.excludeFromBudget) return false;
       const card = app.cards.find(c => c.id === t.cardId);
       if (card?.type === 'transfer_nonspend') return false;
       return true;

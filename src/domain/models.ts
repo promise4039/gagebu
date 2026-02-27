@@ -60,6 +60,11 @@ export type Tx = {
   feeRate: number; // percent when manual
   memo: string;
   tags: string[]; // free-form tags (without #)
+  // 뱅크샐러드 스타일 추가 필드 (선택)
+  time?: string;               // "HH:mm" 형식
+  merchant?: string;           // 거래처
+  excludeFromBudget?: boolean; // true이면 예산 계산에서 제외
+  isFixed?: boolean;           // 고정 지출 표시
 };
 
 export type Statement = {
@@ -111,6 +116,12 @@ export type BudgetItem = {
   yearCap: number | null;
 };
 
+export type CategoryMetaEntry = {
+  icon: string;
+  color: string;
+  displayName?: string; // 표시명 override (내부 path는 유지)
+};
+
 export type AppSettings = {
   budgets: Budgets;
   autoLockMinutes: number;
@@ -120,8 +131,10 @@ export type AppSettings = {
   budgetBuckets?: Record<string, number>;
   // 카테고리 -> 예산 항목(id) 매핑(미분류 처리용)
   categoryBudgetMap: Record<string, string>;
-  // 카테고리별 아이콘/색상 유저 오버라이드 (keyed by fullPath)
-  categoryMeta?: Record<string, { icon: string; color: string }>;
+  // 카테고리별 아이콘/색상/표시명 유저 오버라이드 (keyed by fullPath or group)
+  categoryMeta?: Record<string, CategoryMetaEntry>;
+  // 활성 카테고리 경로 목록 (undefined이면 DEFAULT_CATEGORIES 사용)
+  categoryPaths?: string[];
 };
 
 export type BackupFileV1 = {

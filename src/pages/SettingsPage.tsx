@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { AppSettings } from '../domain/models';
 import { CsvImportModal } from '../components/CsvImportModal';
-import { CategoryMetaEditor } from '../components/CategoryMetaEditor';
+import { CategoryManager } from '../components/CategoryManager';
 
 export function SettingsPage() {
   const app = useApp();
@@ -144,7 +144,7 @@ export function SettingsPage() {
           각 카테고리의 이모지 아이콘과 색상을 변경할 수 있어. 차트와 거래 목록에 반영돼.
         </div>
         <div className="divider" />
-        <CategoryMetaEditor />
+        <CategoryManager />
       </div>
     </div>
   );
