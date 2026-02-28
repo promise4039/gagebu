@@ -20,29 +20,47 @@ export type UnlockedState = {
   pathByCategoryId: Record<string, string>;
 };
 
+// ── 예산 기준값 (CLAUDE.md 기준) ──────────────────────────────────────
+// 고정지출 소계: 820,618 / 변동지출 소계: 561,000 / 예비비: 159,000
+// 월 총예산: 1,540,618원
 const DEFAULT_BUDGET_BUCKETS: Record<string, number> = {
-  '주유': 220000,
-  '마트': 170000,
-  '외식+편의점': 50000,
-  '온라인쇼핑': 30000,
-  '이체(소비성)': 70000,
-  '생활기타': 50000,
-  '예비비': 37268,
+  'KB신용대출': 393000,
+  'NH손해보험': 149978,
+  'KT휴대폰': 53140,
+  'KT인터넷': 32500,
+  '전기료': 40000,
+  '수도료': 7000,
+  '클로드Max': 145000,
+  '주유': 111000,
+  '식재료': 132000,
+  '상담치료': 156000,
+  '상담교통비': 72000,
+  '미용실': 90000,
+  '예비비': 159000,
 };
 
 const DEFAULT_BUDGET_ITEMS: BudgetItem[] = [
-  { id: 'b_fuel', kind: 'fuel', name: '주유', monthCap: 220000, yearCap: null },
-  { id: 'b_grocery', kind: 'grocery', name: '마트', monthCap: 170000, yearCap: null },
-  { id: 'b_food', kind: 'food', name: '외식+편의점', monthCap: 50000, yearCap: null },
-  { id: 'b_online', kind: 'online', name: '온라인쇼핑', monthCap: 30000, yearCap: null },
-  { id: 'b_transfer', kind: 'transfer', name: '이체(소비성)', monthCap: 70000, yearCap: null },
-  { id: 'b_life', kind: 'life', name: '생활기타', monthCap: 50000, yearCap: null },
-  { id: 'b_buffer', kind: 'buffer', name: '예비비', monthCap: 37268, yearCap: null },
+  // 고정 지출
+  { id: 'b_loan',        kind: 'custom',  name: 'KB 신용대출',   monthCap: 393000, yearCap: null },
+  { id: 'b_insurance',   kind: 'custom',  name: 'NH손해보험',    monthCap: 149978, yearCap: null },
+  { id: 'b_phone',       kind: 'custom',  name: 'KT 휴대폰',     monthCap: 53140,  yearCap: null },
+  { id: 'b_internet',    kind: 'custom',  name: 'KT 인터넷',     monthCap: 32500,  yearCap: null },
+  { id: 'b_electricity', kind: 'custom',  name: '전기료',        monthCap: 40000,  yearCap: null },
+  { id: 'b_water',       kind: 'custom',  name: '수도료',        monthCap: 7000,   yearCap: null },
+  { id: 'b_claude',      kind: 'custom',  name: '클로드 Max',    monthCap: 145000, yearCap: null },
+  // 변동 지출
+  { id: 'b_fuel',        kind: 'fuel',    name: '주유',          monthCap: 111000, yearCap: null },
+  { id: 'b_grocery',     kind: 'grocery', name: '식재료',        monthCap: 132000, yearCap: null },
+  { id: 'b_counseling',  kind: 'custom',  name: '상담치료',      monthCap: 156000, yearCap: null },
+  { id: 'b_transport',   kind: 'custom',  name: '상담 교통비',   monthCap: 72000,  yearCap: null },
+  { id: 'b_salon',       kind: 'custom',  name: '미용실',        monthCap: 90000,  yearCap: null },
+  // 예비비
+  { id: 'b_buffer',      kind: 'buffer',  name: '예비비',        monthCap: 159000, yearCap: null },
 ];
 
-
 const DEFAULT_SETTINGS: AppSettings = {
-  budgets: { monthCap: 627268, weekCap: 144754, dayCap: 20678 },
+  // 월 총 1,540,618원 (고정 820,618 + 변동 561,000 + 예비비 159,000)
+  budgets: { monthCap: 1540618, weekCap: 355530, dayCap: 51354 },
   autoLockMinutes: 10,
   budgetItems: DEFAULT_BUDGET_ITEMS,
   budgetBuckets: DEFAULT_BUDGET_BUCKETS,
@@ -83,31 +101,65 @@ export async function initNewWallet(passphrase: string): Promise<void> {
     await upsert(key, 'categories', { id: 'cat_' + c, name: c } as any);
   }
 
-  const cardId = 'card_' + crypto.randomUUID();
-  const versionId = 'ver_' + crypto.randomUUID();
-  const card: Card = { id: cardId, name: '삼성카드(예시)', type: 'credit', isActive: true, trackBalance: false, balance: null, purpose: '' };
-  const ver: CardVersion = {
-    id: versionId,
-    cardId,
-    validFrom: new Date().toISOString().slice(0,10),
-    paymentDay: 13,
-    clamp: true,
-    weekendAdjust: 'none',
-    cycleStart: { monthOffset: -2, day: 30 },
-    cycleEnd: { monthOffset: -1, day: 29 },
+  // ── 계좌 초기 셋업 (CLAUDE.md 계좌 구조 기준) ──────────────────────
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 국민은행: 급여 수취, 대출 자동이체
+  const kbBankId = 'card_' + crypto.randomUUID();
+  await upsert(key, 'cards', {
+    id: kbBankId, name: '국민은행', type: 'account',
+    isActive: true, trackBalance: true, balance: 0,
+    purpose: '급여 수취·대출 상환',
+  } as Card);
+
+  // 농협: 고정지출 + 생활비
+  const nhBankId = 'card_' + crypto.randomUUID();
+  await upsert(key, 'cards', {
+    id: nhBankId, name: '농협', type: 'account',
+    isActive: true, trackBalance: true, balance: 0,
+    purpose: '고정지출·생활비',
+  } as Card);
+
+  // 토스뱅크: 투자 자동이체 전용
+  const tossBankId = 'card_' + crypto.randomUUID();
+  await upsert(key, 'cards', {
+    id: tossBankId, name: '토스뱅크', type: 'account',
+    isActive: true, trackBalance: true, balance: 0,
+    purpose: '투자 자동이체',
+  } as Card);
+
+  // 카카오뱅크: Sinking Fund 적립
+  const kakaoBankId = 'card_' + crypto.randomUUID();
+  await upsert(key, 'cards', {
+    id: kakaoBankId, name: '카카오뱅크', type: 'account',
+    isActive: true, trackBalance: true, balance: 0,
+    purpose: 'Sinking Fund 적립',
+  } as Card);
+
+  // KB신용카드: 상담·교통·미용 결제
+  const kbCardId = 'card_' + crypto.randomUUID();
+  const kbCardVerId = 'ver_' + crypto.randomUUID();
+  await upsert(key, 'cards', {
+    id: kbCardId, name: 'KB신용카드', type: 'credit',
+    isActive: true, trackBalance: false, balance: null,
+    purpose: '상담·교통·미용',
+  } as Card);
+  await upsert(key, 'card_versions', {
+    id: kbCardVerId, cardId: kbCardId, validFrom: today,
+    paymentDay: 14, clamp: true, weekendAdjust: 'next_business',
+    // 이용기간: 전월 15일 ~ 당월 14일
+    cycleStart: { monthOffset: -1, day: 15 },
+    cycleEnd:   { monthOffset: 0,  day: 14 },
     createdAt: new Date().toISOString(),
-  };
-  await upsert(key, 'cards', card);
-  await upsert(key, 'card_versions', ver);
+  } as CardVersion);
 
-  // example account (balance tracking)
-  const acctId = 'card_' + crypto.randomUUID();
-  const acct: Card = { id: acctId, name: '농협계좌(예시)', type: 'account', isActive: true, trackBalance: true, balance: 0, purpose: '생활비/고정지출' };
-  await upsert(key, 'cards', acct);
-
+  // 현금
   const cashId = 'card_' + crypto.randomUUID();
-  const cash: Card = { id: cashId, name: '현금', type: 'cash', isActive: true, trackBalance: true, balance: 0, purpose: '' };
-  await upsert(key, 'cards', cash);
+  await upsert(key, 'cards', {
+    id: cashId, name: '현금', type: 'cash',
+    isActive: true, trackBalance: true, balance: 0,
+    purpose: '',
+  } as Card);
 
 
   await upsert(key, 'settings', { id: 'settings', ...DEFAULT_SETTINGS } as any);
@@ -151,7 +203,7 @@ const catsRaw = await decryptAll<any>(key, 'categories');
 // - Migrate settings.categoryBudgetMap to UUID keys.
 
 function typeFromPath(path: string) {
-  if (path.startsWith('수입/')) return 'INCOME';
+  if (path.startsWith('수입/') || path.startsWith('부수입/') || path.startsWith('기타수입/')) return 'INCOME';
   if (path.startsWith('이체/')) return 'TRANSFER';
   return 'EXPENSE';
 }
@@ -262,16 +314,7 @@ for (const t of tx) {
   
 // budgetItems migration
 if (!(settings as any).budgetItems || !Array.isArray((settings as any).budgetItems) || (settings as any).budgetItems.length === 0) {
-  const bb: Record<string, number> = (settings as any).budgetBuckets ?? DEFAULT_BUDGET_BUCKETS;
-  (settings as any).budgetItems = [
-    { id: 'b_fuel', kind: 'fuel', name: '주유', monthCap: bb['주유'] ?? 220000, yearCap: null },
-    { id: 'b_grocery', kind: 'grocery', name: '마트', monthCap: bb['마트'] ?? 170000, yearCap: null },
-    { id: 'b_food', kind: 'food', name: '외식+편의점', monthCap: bb['외식+편의점'] ?? 50000, yearCap: null },
-    { id: 'b_online', kind: 'online', name: '온라인쇼핑', monthCap: bb['온라인쇼핑'] ?? 30000, yearCap: null },
-    { id: 'b_transfer', kind: 'transfer', name: '이체(소비성)', monthCap: bb['이체(소비성)'] ?? 70000, yearCap: null },
-    { id: 'b_life', kind: 'life', name: '생활기타', monthCap: bb['생활기타'] ?? 50000, yearCap: null },
-    { id: 'b_buffer', kind: 'buffer', name: '예비비', monthCap: bb['예비비'] ?? 37268, yearCap: null },
-  ];
+  (settings as any).budgetItems = DEFAULT_BUDGET_ITEMS;
 }
 
   
@@ -331,16 +374,7 @@ export async function saveSettings(key: CryptoKey, settings: AppSettings): Promi
   
 // budgetItems migration
 if (!(settings as any).budgetItems || !Array.isArray((settings as any).budgetItems) || (settings as any).budgetItems.length === 0) {
-  const bb: Record<string, number> = (settings as any).budgetBuckets ?? DEFAULT_BUDGET_BUCKETS;
-  (settings as any).budgetItems = [
-    { id: 'b_fuel', kind: 'fuel', name: '주유', monthCap: bb['주유'] ?? 220000, yearCap: null },
-    { id: 'b_grocery', kind: 'grocery', name: '마트', monthCap: bb['마트'] ?? 170000, yearCap: null },
-    { id: 'b_food', kind: 'food', name: '외식+편의점', monthCap: bb['외식+편의점'] ?? 50000, yearCap: null },
-    { id: 'b_online', kind: 'online', name: '온라인쇼핑', monthCap: bb['온라인쇼핑'] ?? 30000, yearCap: null },
-    { id: 'b_transfer', kind: 'transfer', name: '이체(소비성)', monthCap: bb['이체(소비성)'] ?? 70000, yearCap: null },
-    { id: 'b_life', kind: 'life', name: '생활기타', monthCap: bb['생활기타'] ?? 50000, yearCap: null },
-    { id: 'b_buffer', kind: 'buffer', name: '예비비', monthCap: bb['예비비'] ?? 37268, yearCap: null },
-  ];
+  (settings as any).budgetItems = DEFAULT_BUDGET_ITEMS;
 }
 
   
@@ -381,7 +415,9 @@ export async function deleteLoan(key: CryptoKey, id: string): Promise<void> { aw
 export async function saveCategory(key: CryptoKey, fullPath: string): Promise<{ id: string; fullPath: string }> {
   const path = fullPath.trim();
   if (!path) throw new Error('EMPTY_CATEGORY');
-  const type = path.startsWith('수입/') ? 'INCOME' : (path.startsWith('이체/') ? 'TRANSFER' : 'EXPENSE');
+  const type = (path.startsWith('수입/') || path.startsWith('부수입/') || path.startsWith('기타수입/'))
+    ? 'INCOME'
+    : (path.startsWith('이체/') ? 'TRANSFER' : 'EXPENSE');
   const icon = type === 'INCOME' ? '💰' : (type === 'TRANSFER' ? '🔁' : '🧾');
 
   const id = 'c_' + crypto.randomUUID();
