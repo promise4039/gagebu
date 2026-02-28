@@ -10,15 +10,34 @@ import { useIsMobile } from '../app/useMedia';
 
 const fmt = new Intl.NumberFormat('ko-KR');
 
-function iconForBudgetItem(kind: BudgetItem['kind']): string {
+function iconForBudgetItem(kind: BudgetItem['kind'], id?: string): string {
+  // id별 개별 아이콘 (CLAUDE.md 기준 13개 항목)
+  const byId: Record<string, string> = {
+    'b_loan':        '🏦',  // KB 신용대출
+    'b_insurance':   '🛡️',  // NH손해보험
+    'b_phone':       '📱',  // KT 휴대폰
+    'b_internet':    '🌐',  // KT 인터넷
+    'b_electricity': '⚡',  // 전기료
+    'b_water':       '💧',  // 수도료
+    'b_claude':      '🤖',  // 클로드 Max
+    'b_fuel':        '⛽️',  // 주유
+    'b_grocery':     '🥦',  // 식재료
+    'b_counseling':  '🧠',  // 상담치료
+    'b_transport':   '🚌',  // 상담 교통비
+    'b_salon':       '💇',  // 미용실
+    'b_buffer':      '🛟',  // 예비비
+  };
+  if (id && id in byId) return byId[id];
+  // kind 기반 fallback
   switch (kind) {
-    case 'fuel': return '⛽️';
-    case 'grocery': return '🛒';
-    case 'food': return '🍽️';
-    case 'online': return '🛍️';
+    case 'fuel':     return '⛽️';
+    case 'grocery':  return '🥦';
+    case 'food':     return '🍽️';
+    case 'online':   return '🛍️';
     case 'transfer': return '🔁';
-    case 'life': return '🏠';
-    case 'custom': return '🧩';
+    case 'life':     return '🏠';
+    case 'buffer':   return '🛟';
+    case 'custom':   return '🧩';
     default: return '📌';
   }
 }
@@ -521,7 +540,7 @@ export function DashboardPage() {
                       {!isOpen ? (
                         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'nowrap' }}>
                           <div className="row" style={{ gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-                            <span style={{ fontSize: 20, flexShrink: 0 }}>{iconForBudgetItem(it.kind)}</span>
+                            <span style={{ fontSize: 20, flexShrink: 0 }}>{iconForBudgetItem(it.kind, it.id)}</span>
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.name}</div>
                               <div className="muted small">월 {fmt.format(it.monthCap)}원</div>
@@ -594,7 +613,7 @@ export function DashboardPage() {
                   <div key={it.id} className="budgetbar">
                     <div className={'fill ' + (cls === 'bad' ? 'bad' : cls === 'warn' ? 'warn' : '')} style={{ width: w + '%' }} />
                     <div className="content">
-                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind)}</span>{it.name}</div>
+                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind, it.id)}</span>{it.name}</div>
                       <div className="right">
                         <div className="top">{fmt.format(act)} / {fmt.format(bud)}원</div>
                         <div className="bottom">소진율 {pct}%</div>
@@ -701,7 +720,7 @@ export function DashboardPage() {
                   <div key={it.id} className="budgetbar">
                     <div className={'fill ' + (cls === 'bad' ? 'bad' : cls === 'warn' ? 'warn' : '')} style={{ width: w + '%' }} />
                     <div className="content">
-                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind)}</span>{it.name}</div>
+                      <div className="left"><span className="catIcon" aria-hidden>{iconForBudgetItem(it.kind, it.id)}</span>{it.name}</div>
                       <div className="right">
                         <div className="top">{fmt.format(act)} / {fmt.format(bud)}원</div>
                         <div className="bottom">소진율 {pct}%</div>

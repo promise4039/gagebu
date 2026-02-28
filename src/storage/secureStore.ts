@@ -182,6 +182,36 @@ export async function unlock(passphrase: string): Promise<UnlockedState> {
     balance: (c.balance === undefined ? (c.type === 'credit' ? null : 0) : c.balance),
     purpose: (c.purpose ?? ''),
   })) as Card[];
+
+  // ── 계좌 마이그레이션: 예시 계좌 → 실제 계좌 교체 ──────────────────
+  const cardNames = migratedCards.map(c => c.name);
+  const hasExampleCards = cardNames.includes('삼성카드(예시)') || cardNames.includes('농협계좌(예시)');
+  if (hasExampleCards) {
+    // 기존 예시 카드 이름/목적 업데이트 (cardId는 유지해 tx 연결 보존)
+    for (const c of migratedCards) {
+      if (c.name === '삼성카드(예시)') {
+        c.name = 'KB신용카드'; c.purpose = '상담·교통·미용';
+        await upsert(key, 'cards', c);
+      }
+      if (c.name === '농협계좌(예시)') {
+        c.name = '농협'; c.purpose = '고정지출·생활비';
+        await upsert(key, 'cards', c);
+      }
+    }
+    // 새 계좌 추가 (없는 것만)
+    const newNames = migratedCards.map(c => c.name);
+    const addIfMissing = async (name: string, type: Card['type'], purpose: string) => {
+      if (!newNames.includes(name)) {
+        const id = 'card_' + crypto.randomUUID();
+        const newCard: Card = { id, name, type, isActive: true, trackBalance: type !== 'credit', balance: type === 'credit' ? null : 0, purpose };
+        await upsert(key, 'cards', newCard);
+        migratedCards.push(newCard);
+      }
+    };
+    await addIfMissing('국민은행', 'account', '급여 수취·대출 상환');
+    await addIfMissing('토스뱅크', 'account', '투자 자동이체');
+    await addIfMissing('카카오뱅크', 'account', 'Sinking Fund 적립');
+  }
   const cardVersions = await decryptAll<CardVersion>(key, 'card_versions');
   const rawTx = await decryptAll<any>(key, 'tx');
   // migrate older tx records (tags/categoryId)

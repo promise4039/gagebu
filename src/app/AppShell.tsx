@@ -7,6 +7,7 @@ import { SettingsPage } from '../pages/SettingsPage';
 import { LoansPage } from '../pages/LoansPage';
 import { TransactionsPage } from '../pages/TransactionsPage';
 import { AnalyticsPage } from '../pages/AnalyticsPage';
+import { SinkingFundPage } from '../pages/SinkingFundPage';
 
 function Tab({ to, icon, label, end }: { to: string; icon: string; label: string; end?: boolean }) {
   return (
@@ -43,6 +44,7 @@ export function AppShell() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/sinking-fund" element={<SinkingFundPage />} />
         </Routes>
 
         {noticeOpen ? (
@@ -60,7 +62,8 @@ export function AppShell() {
         <div className="nav-inner">
           <Tab to="/" icon="🏠" label="대시보드" end />
           <Tab to="/cards" icon="💳" label="계좌/카드" />
-          <Tab to="/loans" icon="📋" label="대출/카드" />
+          <Tab to="/loans" icon="📋" label="대출" />
+          <Tab to="/sinking-fund" icon="🏦" label="적립" />
           <Tab to="/settings" icon="⚙️" label="설정" />
         </div>
       </div>
