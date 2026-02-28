@@ -311,10 +311,23 @@ for (const t of tx) {
     (settings as any).budgetBuckets = DEFAULT_BUDGET_BUCKETS;
   }
   // Persist any seeding so Budget tab isn't empty
-  
-// budgetItems migration
+
+// budgetItems migration: 비어있으면 기본값 세팅
 if (!(settings as any).budgetItems || !Array.isArray((settings as any).budgetItems) || (settings as any).budgetItems.length === 0) {
   (settings as any).budgetItems = DEFAULT_BUDGET_ITEMS;
+}
+
+// 구버전 예산 감지 → CLAUDE.md 기준값으로 강제 교체
+// 판별: monthCap이 구버전(627268)이거나, 구버전 항목 id(b_food·b_online·b_transfer·b_life)가 존재
+const isOldBudget =
+  (settings as any).budgets?.monthCap === 627268 ||
+  ((settings as any).budgetItems as BudgetItem[]).some(
+    (b) => ['b_food', 'b_online', 'b_transfer', 'b_life'].includes(b.id)
+  );
+if (isOldBudget) {
+  (settings as any).budgets     = { monthCap: 1540618, weekCap: 355530, dayCap: 51354 };
+  (settings as any).budgetItems = DEFAULT_BUDGET_ITEMS;
+  (settings as any).budgetBuckets = DEFAULT_BUDGET_BUCKETS;
 }
 
   
